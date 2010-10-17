@@ -89,6 +89,7 @@ int main(int argc, char *argv[]) {
 int ui_loop(int socketfd, struct addrinfo *p) {
 	char input[65]; //64 bytes we can send, plus newline
 	char payload[4+32+64]; // 32 bit header, 32 byte first field, payload
+	char channel[32] = "Common";
 	int num;
 
 	do {
@@ -104,7 +105,7 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 		printf("DEBUG: input |%s|\n", input);
 #endif
 
-		client_prepare(input, payload);
+		client_prepare(input, payload, &channel);
 
 		if ((num = sendto(socketfd, payload, strlen(payload), 0,
 			p->ai_addr, p->ai_addrlen)) == -1) {
@@ -122,7 +123,7 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 	return 0;
 }
 
-void client_prepare(char *input, char *payload) {
+void client_prepare(char *input, char *payload, char **channel) {
 	char command[7];
 	char field2[32], field3[64];
 	int i;
@@ -138,7 +139,7 @@ void client_prepare(char *input, char *payload) {
 		command[i++] = '\0';
 
 		// Copy the second argument into field two
-		strlcpy(field2, &input[i], strlen(&input[i]));
+		strlcpy(field2, &input[i], sizeof(field2));
 		
 
 		if (strcmp(command, "exit") == 0) {
@@ -166,6 +167,7 @@ void client_prepare(char *input, char *payload) {
 		} else if (strcmp(command, "switch") == 0) {
 			// No type, all client side, but counts as a keep alive
 			type = 7;
+			strlcpy(*channel, field2, sizeof(*channel));
 			memset(field2, 0, sizeof(field2));
 			memset(field3, 0, sizeof(field3));
 		} else {
@@ -177,8 +179,8 @@ void client_prepare(char *input, char *payload) {
 
 	} else {
 		type = 4;
-		strlcpy(field2, channel, strlen(channel));
-		strlcpy(field3, input, strlen(input));
+		strlcpy(field2, *channel, sizeof(field2));
+		strlcpy(field3, input, sizeof(field2));
 		// Not a command, make a say request
 	}
 
@@ -196,7 +198,10 @@ void client_prepare(char *input, char *payload) {
 	return;
 }
 
-int kbhit()
+
+// Taken directly from 
+// http://cc.byexamples.com/2007/04/08/non-blocking-user-input-in-loop-without-ncurses/
+int kbhit() 
 {
     struct timeval tv;
     fd_set fds;

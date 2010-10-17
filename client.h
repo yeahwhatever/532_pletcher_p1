@@ -3,7 +3,7 @@
 
 
 int ui_loop(int socketfd, struct addrinfo *p);
-void client_prepare(char *input, char *payload);
+void client_prepare(char *input, char *payload, char **channel);
 int kbhit();
 
 #endif
