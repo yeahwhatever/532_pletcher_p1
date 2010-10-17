@@ -93,6 +93,7 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 
 	do {
 		printf("> ");
+		fflush(stdin);
 		while (!kbhit()) {
 			// Recieve/display code goes here
 			usleep(1);
@@ -122,46 +123,71 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 }
 
 void client_prepare(char *input, char *payload) {
-	// 32 bit header, 32 byte first field, payload
 	char command[7];
+	char field2[32], field3[64];
 	int i;
 	unsigned int type;
 
 	if (input[0] == '/') {
 	// We have a command, start parsing
-		for (i = 0; (input[i] != ' ') && (i < 7); i++) {
+		for (i = 0; (input[i] != ' ' && input[i] != '\0') && (i < 7); i++) {
 			command[i] = input[i];
 		}
 
 		// We end on a space, so advance to next real char and null terminate
-		command[i++] = '\0'; 
+		command[i++] = '\0';
 
 		if (strcmp(command, "exit") == 0) {
+			type = 1;
+			memset(field2, 0, sizeof(field2));
+			memset(field3, 0, sizeof(field3));
 
 		} else if (strcmp(command, "join") == 0) {
 			type = 2;
+			memset(field3, 0, sizeof(field3));
 
 		} else if (strcmp(command, "leave") == 0) {
 			type = 3;
+			memset(field3, 0, sizeof(field3));
 
 		} else if (strcmp(command, "list") == 0) {
 			type = 5;
+			memset(field2, 0, sizeof(field2));
+			memset(field3, 0, sizeof(field3));
 
 		} else if (strcmp(command, "who") == 0) {
 			type = 6;
+			memset(field3, 0, sizeof(field3));
 
 		} else if (strcmp(command, "switch") == 0) {
-			type = 7;
 			// No type, all client side, but counts as a keep alive
+			type = 7;
+			memset(field2, 0, sizeof(field2));
+			memset(field3, 0, sizeof(field3));
 		} else {
 			// Bad command
 			payload[0] = '\0';
+			return;
+		}
+
+		if (sizeof(int) != 4) {
+			// This would be a problem, bail
+			payload[0] = '\0';
+			return;
 		}
 
 	} else {
 		type = 4;
 		// Not a command, make a say request
 	}
+
+	// Set the type, second field, and third field
+	memcpy(payload, &type, sizeof(int));
+	memcpy(&payload[4], field2, sizeof(field2));
+	memcpy(&payload[36], field3, sizeof(field3));
+
+
+	return;
 
 }
 int kbhit()
