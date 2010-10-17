@@ -93,13 +93,17 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 
 	do {
 		printf("> ");
+		while (!kbhit()) {
+			// Recieve/display code goes here
+			usleep(1);
+		}
 		fgets(input, sizeof(input), stdin);
 
-#if DEBUG > 0
+#if DEBUG > 1
 		printf("DEBUG: input |%s|\n", input);
 #endif
 
-		payload = client_prepare(input);
+		client_prepare(input, payload);
 
 		if ((num = sendto(socketfd, payload, strlen(payload), 0,
 			p->ai_addr, p->ai_addrlen)) == -1) {
@@ -117,9 +121,9 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 	return 0;
 }
 
-char* client_prepare(char *input) {
+void client_prepare(char *input, char *payload) {
 	// 32 bit header, 32 byte first field, payload
-	char command[7], payload[4+32+64]; 
+	char command[7];
 	int i;
 	unsigned int type;
 
@@ -147,41 +151,19 @@ char* client_prepare(char *input) {
 			type = 6;
 
 		} else if (strcmp(command, "switch") == 0) {
-			// No type, all client side
-
+			type = 7;
+			// No type, all client side, but counts as a keep alive
+		} else {
+			// Bad command
+			payload[0] = '\0';
 		}
 
 	} else {
+		type = 4;
 		// Not a command, make a say request
 	}
 
-	return payload;
 }
-
-void nonblock(int state)
-{
-    struct termios ttystate;
-
-    //get the terminal state
-    tcgetattr(STDIN_FILENO, &ttystate);
-
-    if (state==NB_ENABLE)
-    {
-        //turn off canonical mode
-        ttystate.c_lflag &= ~ICANON;
-        //minimum of number input read.
-        ttystate.c_cc[VMIN] = 1;
-    }
-    else if (state==NB_DISABLE)
-    {
-        //turn on canonical mode
-        ttystate.c_lflag |= ICANON;
-    }
-    //set the terminal attributes.
-    tcsetattr(STDIN_FILENO, TCSANOW, &ttystate);
-
-}
-
 int kbhit()
 {
     struct timeval tv;

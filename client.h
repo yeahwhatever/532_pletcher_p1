@@ -3,8 +3,7 @@
 
 
 int ui_loop(int socketfd, struct addrinfo *p);
-char* client_prepare(char *input);
+void client_prepare(char *input, char *payload);
 int kbhit();
-void nonblock(int state);
 
 #endif
