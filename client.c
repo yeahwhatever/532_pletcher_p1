@@ -137,6 +137,8 @@ void client_prepare(char *input, char *payload) {
 		// We end on a space, so advance to next real char and null terminate
 		command[i++] = '\0';
 
+		strlcpy(field2, &input[i], strlen(&input[i]));
+
 		if (strcmp(command, "exit") == 0) {
 			type = 1;
 			memset(field2, 0, sizeof(field2));
