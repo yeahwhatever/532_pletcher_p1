@@ -122,6 +122,7 @@ char* client_prepare(char *input) {
 	// 32 bit header, 32 byte first field, payload
 	char command[7], payload[4+32+64]; 
 	int i;
+	unsigned int type;
 
 	if (input[0] == '/') {
 	// We have a command, start parsing
@@ -135,14 +136,19 @@ char* client_prepare(char *input) {
 		if (strcmp(command, "exit") == 0) {
 
 		} else if (strcmp(command, "join") == 0) {
+			type = 2;
 
 		} else if (strcmp(command, "leave") == 0) {
+			type = 3;
 
 		} else if (strcmp(command, "list") == 0) {
+			type = 5;
 
 		} else if (strcmp(command, "who") == 0) {
+			type = 6;
 
 		} else if (strcmp(command, "switch") == 0) {
+			// No type, all client side
 
 		}
 
