@@ -6,6 +6,10 @@
  *
  * Sources:
  * Beej's network programming guide
+ * 	-http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html
+ *
+ * Nonblocking User Input
+ * 	-http://cc.byexamples.com/2007/04/08/non-blocking-user-input-in-loop-without-ncurses/
  *
  */
 
@@ -23,7 +27,6 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
-#include "raw.h"
 #include "client.h"
 
 int main(int argc, char *argv[]) {
@@ -41,11 +44,6 @@ int main(int argc, char *argv[]) {
 		nick = argv[3];
 	}
 
-	if (raw_mode()) {
-#if DEBUG > 0
-		printf("DEBUG: Could not switch to raw mode");
-#endif
-	}
 
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
@@ -81,6 +79,7 @@ int main(int argc, char *argv[]) {
 
 	status = ui_loop(socketfd, p);
 
+	// Clean Up
 	freeaddrinfo(servinfo);
 	close(socketfd);
 
@@ -158,3 +157,41 @@ char* client_prepare(char *input) {
 
 	return payload;
 }
+
+void nonblock(int state)
+{
+    struct termios ttystate;
+
+    //get the terminal state
+    tcgetattr(STDIN_FILENO, &ttystate);
+
+    if (state==NB_ENABLE)
+    {
+        //turn off canonical mode
+        ttystate.c_lflag &= ~ICANON;
+        //minimum of number input read.
+        ttystate.c_cc[VMIN] = 1;
+    }
+    else if (state==NB_DISABLE)
+    {
+        //turn on canonical mode
+        ttystate.c_lflag |= ICANON;
+    }
+    //set the terminal attributes.
+    tcsetattr(STDIN_FILENO, TCSANOW, &ttystate);
+
+}
+
+int kbhit()
+{
+    struct timeval tv;
+    fd_set fds;
+    tv.tv_sec = 0;
+    tv.tv_usec = 0;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds); //STDIN_FILENO is 0
+    select(STDIN_FILENO+1, &fds, NULL, NULL, &tv);
+    return FD_ISSET(STDIN_FILENO, &fds);
+}
+
+
