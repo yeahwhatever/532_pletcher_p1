@@ -137,7 +137,9 @@ void client_prepare(char *input, char *payload) {
 		// We end on a space, so advance to next real char and null terminate
 		command[i++] = '\0';
 
+		// Copy the second argument into field two
 		strlcpy(field2, &input[i], strlen(&input[i]));
+		
 
 		if (strcmp(command, "exit") == 0) {
 			type = 1;
@@ -172,15 +174,18 @@ void client_prepare(char *input, char *payload) {
 			return;
 		}
 
-		if (sizeof(int) != 4) {
-			// This would be a problem, bail
-			payload[0] = '\0';
-			return;
-		}
 
 	} else {
 		type = 4;
+		strlcpy(field2, channel, strlen(channel));
+		strlcpy(field3, input, strlen(input));
 		// Not a command, make a say request
+	}
+
+	if (sizeof(int) != 4) {
+		// This would be a problem, bail
+		payload[0] = '\0';
+		return;
 	}
 
 	// Set the type, second field, and third field
@@ -188,10 +193,9 @@ void client_prepare(char *input, char *payload) {
 	memcpy(&payload[4], field2, sizeof(field2));
 	memcpy(&payload[36], field3, sizeof(field3));
 
-
 	return;
-
 }
+
 int kbhit()
 {
     struct timeval tv;
