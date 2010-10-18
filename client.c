@@ -91,6 +91,7 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 	char payload[4+32+64]; // 32 bit header, 32 byte first field, payload
 	char channel[32] = "Common";
 	int num;
+	unsigned int i;
 
 	do {
 		printf("> ");
@@ -101,13 +102,28 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 		}
 		fgets(input, sizeof(input), stdin);
 
+		//for (i = 0; i < strlen(input); i++) {
+		//	// Backspace away the input on enter
+		//	printf("\b");
+		//}
+
 #if DEBUG > 1
-		printf("DEBUG: input |%s|\n", input);
+		//printf("DEBUG: input |%s|\n", input);
 #endif
 
-		client_prepare(input, payload, &channel);
+		client_prepare(input, payload, channel);
 
-		if ((num = sendto(socketfd, payload, strlen(payload), 0,
+		i = payload_size(payload);
+
+		if (!i) {
+			// If payload size is 0, something went wrong.
+#if DEBUG > 0
+			printf("DEBUG: error in payload, size 0");
+#endif
+			continue;
+		}
+
+		if ((num = sendto(socketfd, payload, i, 0,
 			p->ai_addr, p->ai_addrlen)) == -1) {
 			perror("client: sendto failed\n");
 			return 4;
@@ -123,11 +139,15 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 	return 0;
 }
 
-void client_prepare(char *input, char *payload, char **channel) {
+void client_prepare(char *input, char *payload, char *channel) {
 	char command[7];
 	char field2[32], field3[64];
 	int i;
-	unsigned int type;
+	int type;
+
+	memset(payload, 0, sizeof(payload));
+	memset(field2, 0, sizeof(field2));
+	memset(field3, 0, sizeof(field3));
 
 	if (input[0] == '/') {
 	// We have a command, start parsing
@@ -167,27 +187,25 @@ void client_prepare(char *input, char *payload, char **channel) {
 		} else if (strcmp(command, "switch") == 0) {
 			// No type, all client side, but counts as a keep alive
 			type = 7;
-			strlcpy(*channel, field2, sizeof(*channel));
+			strlcpy(channel, field2, sizeof(channel));
 			memset(field2, 0, sizeof(field2));
 			memset(field3, 0, sizeof(field3));
 		} else {
 			// Bad command
-			payload[0] = '\0';
-			return;
+			type = -1;
 		}
 
 
 	} else {
 		type = 4;
-		strlcpy(field2, *channel, sizeof(field2));
-		strlcpy(field3, input, sizeof(field2));
+		strlcpy(field2, channel, sizeof(field2));
+		strlcpy(field3, input, sizeof(field3));
 		// Not a command, make a say request
 	}
 
 	if (sizeof(int) != 4) {
 		// This would be a problem, bail
-		payload[0] = '\0';
-		return;
+		type = -1;
 	}
 
 	// Set the type, second field, and third field
@@ -198,6 +216,23 @@ void client_prepare(char *input, char *payload, char **channel) {
 	return;
 }
 
+unsigned int payload_size(char *payload) {
+	if ((int)payload == -1) {
+		return 0;
+	}
+
+	if (strlen(&payload[36]) > 0) {
+		// If we have a valid string at offset 36 its a say message
+		// payload length is 36 (header) + payload message
+		return 36 + strlen(&payload[36]);
+	} else if (strlen(&payload[4]) > 0) {
+		// No 2nd field, just type + first field
+		return 4 + strlen(&payload[4]);
+	} else {
+		// All packets have at least 4 bytes
+		return 4;
+	}
+}
 
 // Taken directly from 
 // http://cc.byexamples.com/2007/04/08/non-blocking-user-input-in-loop-without-ncurses/
