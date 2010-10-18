@@ -230,7 +230,7 @@ void client_login(int socketfd, struct addrinfo *p, char *nick) {
 
 	size = payload_size(payload);
 
-	if ((i = sendto(socketfd, payload, 36, 0,
+	if ((i = sendto(socketfd, payload, size, 0,
 					p->ai_addr, p->ai_addrlen)) == -1) {
 		perror("client: sendto failed\n");
 	}
@@ -238,24 +238,28 @@ void client_login(int socketfd, struct addrinfo *p, char *nick) {
 #if DEBUG > 0
 	printf("DEBUG: sent %d bytes, login\n", i);
 #endif
+
 }
 
 unsigned int payload_size(char *payload) {
-	if ((int)payload == -1) {
-		return 0;
-	}
+	int i;
 
-	if (strlen(&payload[36]) > 0) {
-		// If we have a valid string at offset 36 its a say message
-		// payload length is 36 (header) + payload message
-		return 36 + strlen(&payload[36]);
-	} else if (strlen(&payload[4]) > 0) {
-		// No 2nd field, just type + first field
-		return 4 + strlen(&payload[4]);
-	} else {
-		// All packets have at least 4 bytes
+	memcpy(&i, payload, sizeof(i));
+
+	if (i == -1) 
+		return 0;
+
+	if (i == 1 || i == 5 || i == 7)
 		return 4;
-	}
+
+	if (i == 0 || i == 2 || i == 3 || i == 6)
+		return 36;
+
+	if (i == 4)
+		return 100;
+
+	// Shouldnt be reached, if it is return error state
+	return 0;
 }
 
 // Taken directly from 
