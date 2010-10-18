@@ -20,6 +20,7 @@
 #include <string.h>
 
 #include <unistd.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -59,14 +60,19 @@ int main(int argc, char *argv[]) {
 #endif
 
 	for (p = servinfo; p != NULL; p = p->ai_next) {
+		// If we cant create the socket, error and continue
+		// otherwise break
 		if ((socketfd = socket(p->ai_family, p->ai_socktype,
 			p->ai_protocol)) == -1) {
 			perror("client: call to socket failed");
 			continue;
+		} else {
+			break;
 		}
-
-		break;
 	}
+
+	// Set non-blocking
+	//fcntl(socketfd, F_SETFL, O_NONBLOCK);
 
 	if (p == NULL) {
 		fprintf(stderr, "client: failed to make socket\n");
@@ -100,7 +106,7 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 		printf("> ");
 		fflush(stdin);
 		while (!kbhit()) {
-			// Recieve/display code goes here
+			
 			usleep(1);
 		}
 		fgets(input, sizeof(input), stdin);
