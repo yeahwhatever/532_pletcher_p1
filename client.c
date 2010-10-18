@@ -77,13 +77,16 @@ int main(int argc, char *argv[]) {
 	printf("DEBUG: socket worked\n");
 #endif
 
+
+	client_login(socketfd, p, nick);
+
 	status = ui_loop(socketfd, p);
 
 	// Clean Up
 	freeaddrinfo(servinfo);
 	close(socketfd);
 
-	return 0; // Not reached
+	return status; 
 }
 
 int ui_loop(int socketfd, struct addrinfo *p) {
@@ -214,6 +217,27 @@ void client_prepare(char *input, char *payload, char *channel) {
 	memcpy(&payload[36], field3, sizeof(field3));
 
 	return;
+}
+
+void client_login(int socketfd, struct addrinfo *p, char *nick) {
+	int i = 0;
+	unsigned int size;
+	char payload[36]; // 4 bytes for type, 32 for nick
+
+	memset(payload, 0, sizeof(payload));
+	memcpy(payload, &i, sizeof(i));
+	memcpy(&payload[4], nick, sizeof(payload)-4);
+
+	size = payload_size(payload);
+
+	if ((i = sendto(socketfd, payload, 36, 0,
+					p->ai_addr, p->ai_addrlen)) == -1) {
+		perror("client: sendto failed\n");
+	}
+
+#if DEBUG > 0
+	printf("DEBUG: sent %d bytes, login\n", i);
+#endif
 }
 
 unsigned int payload_size(char *payload) {
