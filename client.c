@@ -28,6 +28,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
+#include "raw.h"
 #include "client.h"
 
 int main(int argc, char *argv[]) {
@@ -71,13 +72,11 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	// Set non-blocking
-	//fcntl(socketfd, F_SETFL, O_NONBLOCK);
-
 	if (p == NULL) {
 		fprintf(stderr, "client: failed to make socket\n");
 		return 3;
 	}
+
 
 #if DEBUG > 1
 	printf("DEBUG: socket worked\n");
@@ -86,63 +85,86 @@ int main(int argc, char *argv[]) {
 
 	client_login(socketfd, p, nick);
 
+	raw_mode();
+	setbuf(stdin, NULL); // Black Magic
 	status = ui_loop(socketfd, p);
 
 	// Clean Up
 	freeaddrinfo(servinfo);
 	close(socketfd);
+	cooked_mode();
+
 
 	return status; 
 }
 
 int ui_loop(int socketfd, struct addrinfo *p) {
-	char input[65]; //64 bytes we can send, plus newline
+	char input[65], buf[65]; //64 bytes we can send, plus newline
 	char payload[4+32+64]; // 32 bit header, 32 byte first field, payload
 	char channel[32] = "Common";
-	int num;
-	unsigned int i;
+	int num, i, process = 0;
+
+	fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
+	fcntl(socketfd, F_SETFL, O_NONBLOCK);
+
+	memset(input, 0, sizeof(input));
+	memset(buf, 0, sizeof(buf));
+
 
 	do {
-		printf("> ");
-		fflush(stdin);
-		while (!kbhit()) {
-			
-			usleep(1);
+		// Get Keyboard input! Hurray!
+		num = read(STDIN_FILENO, buf, sizeof(buf));
+		// If were longer than input, it will truncate...
+
+		printf("%d\n", num);
+
+		if (num > -1)
+			strlcat(input, buf, sizeof(input));
+
+		while (num > -1) {
+			if (buf[num] == '\n') {
+				process = 1;
+				// Blast newlines. Note that if you enter text like 'foo\nbar' 
+				// faster than 50k usec, this will probably do bad things. However,
+				// testing this i found it to be twice the keyboard repeat rate, so
+				// so we should be fine
+				input[strlen(input) -1] = '\0';
+				break;
+			}
+			num--;
 		}
-		fgets(input, sizeof(input), stdin);
 
-		//for (i = 0; i < strlen(input); i++) {
-		//	// Backspace away the input on enter
-		//	printf("\b");
-		//}
+		if (process) {
+			printf("|%s|\n", input);
+			client_prepare(input, payload, channel);
 
-#if DEBUG > 1
-		//printf("DEBUG: input |%s|\n", input);
-#endif
+			i = payload_size(payload);
 
-		client_prepare(input, payload, channel);
-
-		i = payload_size(payload);
-
-		if (!i) {
-			// If payload size is 0, something went wrong.
+			if (!i) {
+				// If payload size is 0, something went wrong.
 #if DEBUG > 0
-			printf("DEBUG: error in payload, size 0");
+				printf("DEBUG: error in payload, size 0");
 #endif
-			continue;
-		}
+				continue;
+			}
 
-		if ((num = sendto(socketfd, payload, i, 0,
-			p->ai_addr, p->ai_addrlen)) == -1) {
-			perror("client: sendto failed\n");
-			return 4;
-		}
+			if ((num = sendto(socketfd, payload, i, 0,
+							p->ai_addr, p->ai_addrlen)) == -1) {
+				perror("client: sendto failed\n");
+				return 4;
+			}
 
 #if DEBUG > 0
-		printf("DEBUG: sent %d bytes\n", num);
+			printf("DEBUG: sent %d bytes\n", num);
 #endif
 
+			// Reset.
+			memset(input, 0, sizeof(input));
+			memset(buf, 0, sizeof(buf));
+			process = 0;
 
+		}
+		usleep(50000);
 	} while (strcmp(input, "/exit"));
 
 	return 0;
@@ -159,7 +181,7 @@ void client_prepare(char *input, char *payload, char *channel) {
 	memset(field3, 0, sizeof(field3));
 
 	if (input[0] == '/') {
-	// We have a command, start parsing
+		// We have a command, start parsing
 		for (i = 0; (input[i] != ' ' && input[i] != '\0') && (i < 7); i++) {
 			command[i] = input[i];
 		}
@@ -228,7 +250,7 @@ void client_prepare(char *input, char *payload, char *channel) {
 void client_login(int socketfd, struct addrinfo *p, char *nick) {
 	int i = 0;
 	unsigned int size;
-	char payload[36]; // 4 bytes for type, 32 for nick
+	char payload[36], channel[7] = "Common"; // 4 bytes for type, 32 for nick
 
 	memset(payload, 0, sizeof(payload));
 	memcpy(payload, &i, sizeof(i));
@@ -243,6 +265,24 @@ void client_login(int socketfd, struct addrinfo *p, char *nick) {
 
 #if DEBUG > 0
 	printf("DEBUG: sent %d bytes, login\n", i);
+#endif
+
+
+	memset(payload, 0, sizeof(payload));
+	i = 2;
+	memcpy(payload, &i, sizeof(i));
+	memcpy(&payload[4], channel, sizeof(payload)-4);
+
+
+	size = payload_size(payload);
+
+	if ((i = sendto(socketfd, payload, size, 0,
+					p->ai_addr, p->ai_addrlen)) == -1) {
+		perror("client: sendto failed\n");
+	}
+
+#if DEBUG > 0
+	printf("DEBUG: sent %d bytes, join\n", i);
 #endif
 
 }
@@ -267,19 +307,4 @@ unsigned int payload_size(char *payload) {
 	// Shouldnt be reached, if it is return error state
 	return 0;
 }
-
-// Taken directly from 
-// http://cc.byexamples.com/2007/04/08/non-blocking-user-input-in-loop-without-ncurses/
-int kbhit() 
-{
-    struct timeval tv;
-    fd_set fds;
-    tv.tv_sec = 0;
-    tv.tv_usec = 0;
-    FD_ZERO(&fds);
-    FD_SET(STDIN_FILENO, &fds); //STDIN_FILENO is 0
-    select(STDIN_FILENO+1, &fds, NULL, NULL, &tv);
-    return FD_ISSET(STDIN_FILENO, &fds);
-}
-
 
