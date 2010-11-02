@@ -116,8 +116,6 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 		num = read(STDIN_FILENO, buf, sizeof(buf));
 		// If were longer than input, it will truncate...
 
-		printf("%d\n", num);
-
 		if (num > -1)
 			strlcat(input, buf, sizeof(input));
 
@@ -145,6 +143,10 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 #if DEBUG > 0
 				printf("DEBUG: error in payload, size 0");
 #endif
+				// Reset.
+				memset(input, 0, sizeof(input));
+				memset(buf, 0, sizeof(buf));
+				process = 0;
 				continue;
 			}
 
@@ -164,7 +166,7 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 			process = 0;
 
 		}
-		usleep(50000);
+		usleep(5000);
 	} while (strcmp(input, "/exit"));
 
 	return 0;
@@ -182,9 +184,8 @@ void client_prepare(char *input, char *payload, char *channel) {
 
 	if (input[0] == '/') {
 		// We have a command, start parsing
-		for (i = 0; (input[i] != ' ' && input[i] != '\0') && (i < 7); i++) {
-			command[i] = input[i];
-		}
+		for (i = 0; (input[i+1] != ' ' && input[i+1] != '\0') && (i < 7); i++)
+			command[i] = input[i+1];
 
 		// We end on a space, so advance to next real char and null terminate
 		command[i++] = '\0';
@@ -200,6 +201,7 @@ void client_prepare(char *input, char *payload, char *channel) {
 
 		} else if (strcmp(command, "join") == 0) {
 			type = 2;
+			strlcpy(channel, field2, sizeof(channel));
 			memset(field3, 0, sizeof(field3));
 
 		} else if (strcmp(command, "leave") == 0) {
