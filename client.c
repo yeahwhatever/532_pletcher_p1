@@ -13,7 +13,6 @@
  *
  */
 
-#define DEBUG 2
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -31,6 +30,9 @@
 #include "raw.h"
 #include "client.h"
 
+#define DEBUG 2
+#define CHANNEL_SIZE 32
+#define PAYLOAD_SIZE 100
 int main(int argc, char *argv[]) {
 	char *host, *port, *nick;
 	int socketfd, status;
@@ -100,8 +102,8 @@ int main(int argc, char *argv[]) {
 
 int ui_loop(int socketfd, struct addrinfo *p) {
 	char input[65], buf[65]; //64 bytes we can send, plus newline
-	char payload[4+32+64]; // 32 bit header, 32 byte first field, payload
-	char channel[32] = "Common";
+	char payload[PAYLOAD_SIZE]; 
+	char channel[CHANNEL_SIZE] = "Common";
 	int num, i, process = 0;
 
 	fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
@@ -167,7 +169,7 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 
 		}
 		usleep(5000);
-	} while (strcmp(input, "/exit"));
+	} while (strcmp(input, "/exit") && process);
 
 	return 0;
 }
@@ -178,7 +180,7 @@ void client_prepare(char *input, char *payload, char *channel) {
 	int i;
 	int type;
 
-	memset(payload, 0, sizeof(payload));
+	memset(payload, 0, PAYLOAD_SIZE);
 	memset(field2, 0, sizeof(field2));
 	memset(field3, 0, sizeof(field3));
 
@@ -189,6 +191,7 @@ void client_prepare(char *input, char *payload, char *channel) {
 
 		// We end on a space, so advance to next real char and null terminate
 		command[i++] = '\0';
+		i++;
 
 		// Copy the second argument into field two
 		strlcpy(field2, &input[i], sizeof(field2));
@@ -201,7 +204,7 @@ void client_prepare(char *input, char *payload, char *channel) {
 
 		} else if (strcmp(command, "join") == 0) {
 			type = 2;
-			strlcpy(channel, field2, sizeof(channel));
+			strlcpy(channel, field2, CHANNEL_SIZE);
 			memset(field3, 0, sizeof(field3));
 
 		} else if (strcmp(command, "leave") == 0) {
@@ -220,7 +223,7 @@ void client_prepare(char *input, char *payload, char *channel) {
 		} else if (strcmp(command, "switch") == 0) {
 			// No type, all client side, but counts as a keep alive
 			type = 7;
-			strlcpy(channel, field2, sizeof(channel));
+			strlcpy(channel, field2, CHANNEL_SIZE);
 			memset(field2, 0, sizeof(field2));
 			memset(field3, 0, sizeof(field3));
 		} else {
