@@ -113,7 +113,7 @@ int ui_loop(int socketfd) {
 	char payload[PAYLOAD_SIZE]; 
 	char channel[CHANNEL_SIZE] = "Common";
 	char dgram[DGRAM_SIZE];
-	int num, i, run = 1, process = 0;
+	int num, i, run = 1, process = 0, num_recv = 0;
 
 	fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
 	fcntl(socketfd, F_SETFL, O_NONBLOCK);
@@ -186,11 +186,21 @@ int ui_loop(int socketfd) {
 		// ammount needed. Just allocating a meg at the start of the program
 		// will probably be faster than going back to the heap every time we
 		// get a packet.
-		num = recv(socketfd, dgram, DGRAM_SIZE, 0);
+		if (!num_recv)
+			num_recv = recv(socketfd, dgram, DGRAM_SIZE, 0);
+		else {
+			i = recv(socketfd, &dgram[num_recv], 
+					DGRAM_SIZE - num_recv, 0);
+			num_recv += i;
+		}
 
-		if (num > -1)
-			printf("[%s][%s]: %s\n", &dgram[4], &dgram[36], &dgram[68]);
-			
+		// If we've gotten fewer than 4 bytes, we cant even tell the type so bail
+		if (num_recv < 4)
+			continue;
+
+		if (check_size(dgram) == num_recv) {
+			display(dgram);
+		}		
 
 
 		usleep(5000);
@@ -313,12 +323,30 @@ unsigned int payload_size(char *payload) {
 		return 4;
 
 	if (i == 0 || i == 2 || i == 3 || i == 6)
-		return 36;
+		return 4+32;
 
 	if (i == 4)
-		return 100;
+		return 4+32+64;
 
 	// Shouldnt be reached, if it is return error state
 	return 0;
 }
 
+int check_size(char *dgram) {
+	int i, j;
+
+	memcpy(&i, dgram, sizeof(i));
+
+	if (i == 0)
+		return 4+32+32+64;
+	if (i == 3)
+		return 4+64;
+
+	if (i == 1 || i == 2) {
+		memcpy(&j, dgram[sizeof(i)], sizeof(j));
+		return 4 + 4 + j * 32;
+	}
+
+	// Error state
+	return -1;
+}
