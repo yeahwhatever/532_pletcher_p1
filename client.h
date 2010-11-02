@@ -6,6 +6,7 @@ int ui_loop(int socketfd);
 void client_prepare(char *input, char *payload, char *channel);
 unsigned int payload_size(char *payload);
 void client_login(int socketfd, char *nick);
-int kbhit();
+int check_size(char *dgram);
+void display(char *dgram);
 
 #endif

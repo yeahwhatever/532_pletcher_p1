@@ -200,6 +200,9 @@ int ui_loop(int socketfd) {
 
 		if (check_size(dgram) == num_recv) {
 			display(dgram);
+			// Rest
+			num_recv = 0;
+			memset(dgram, 0, sizeof(dgram));
 		}		
 
 
@@ -343,10 +346,40 @@ int check_size(char *dgram) {
 		return 4+64;
 
 	if (i == 1 || i == 2) {
-		memcpy(&j, dgram[sizeof(i)], sizeof(j));
+		memcpy(&j, &dgram[sizeof(i)], sizeof(j));
 		return 4 + 4 + j * 32;
 	}
 
 	// Error state
 	return -1;
+}
+
+void display(char *dgram) {
+	int i, j, k;
+
+	memcpy(&i, dgram, sizeof(i));
+
+	switch (i) {
+		case 0:
+			printf("[%s][%s]: %s", &dgram[4], 
+					&dgram[4+32], &dgram[4+32+32]);
+			break;
+		case 1:
+			memcpy(&j, &dgram[sizeof(i)], sizeof(j));
+			printf("Existing channels:\n");
+			for (k = 0; k < j; k++) 
+				printf("%s ", &dgram[4+4+k*sizeof(j)]);
+
+			break;
+		case 2:
+			memcpy(&j, &dgram[sizeof(i)], sizeof(j));
+			printf("Users on channel %s:\n", &dgram[4+4]);
+			for (k = 0; k < j; k++) 
+				printf("%s ", &dgram[4+4+32+k*sizeof(j)]);
+			break;
+		case 3:
+			break;
+		default:
+			break;
+	}
 }
