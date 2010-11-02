@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -99,6 +100,8 @@ int main(int argc, char *argv[]) {
 	setbuf(stdin, NULL); // Black Magic
 	status = ui_loop(socketfd);
 
+	printf("\n");
+
 	// Clean Up
 	freeaddrinfo(servinfo);
 	close(socketfd);
@@ -113,7 +116,9 @@ int ui_loop(int socketfd) {
 	char payload[PAYLOAD_SIZE]; 
 	char channel[CHANNEL_SIZE] = "Common";
 	char dgram[DGRAM_SIZE];
-	int num, i, run = 1, process = 0, num_recv = 0;
+	int num, run = 1, process = 0, num_recv = 0;
+	unsigned int i;
+	time_t t;
 
 	fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
 	fcntl(socketfd, F_SETFL, O_NONBLOCK);
@@ -121,6 +126,9 @@ int ui_loop(int socketfd) {
 	memset(input, 0, sizeof(input));
 	memset(buf, 0, sizeof(buf));
 
+	t = time(NULL);
+
+	printf("> ");
 
 	while (run != 0) {
 		// Get Keyboard input! Hurray!
@@ -148,7 +156,6 @@ int ui_loop(int socketfd) {
 		}
 
 		if (process) {
-			printf("|%s|\n", input);
 			client_prepare(input, payload, channel);
 
 			i = payload_size(payload);
@@ -170,6 +177,9 @@ int ui_loop(int socketfd) {
 				return 4;
 			}
 
+			// We sent data, update time.
+			t = time(NULL);
+
 #if DEBUG > 0
 			printf("DEBUG: sent %d bytes\n", num);
 #endif
@@ -186,7 +196,7 @@ int ui_loop(int socketfd) {
 		// ammount needed. Just allocating a meg at the start of the program
 		// will probably be faster than going back to the heap every time we
 		// get a packet.
-		if (!num_recv)
+		if (num_recv <= 0)
 			num_recv = recv(socketfd, dgram, DGRAM_SIZE, 0);
 		else {
 			i = recv(socketfd, &dgram[num_recv], 
@@ -195,16 +205,18 @@ int ui_loop(int socketfd) {
 		}
 
 		// If we've gotten fewer than 4 bytes, we cant even tell the type so bail
-		if (num_recv < 4)
-			continue;
+		if (num_recv > 4 && check_size(dgram) == num_recv) {
+				display(dgram);
+				// Rest
+				num_recv = 0;
+				memset(dgram, 0, sizeof(dgram));
+		}
 
-		if (check_size(dgram) == num_recv) {
-			display(dgram);
-			// Rest
-			num_recv = 0;
-			memset(dgram, 0, sizeof(dgram));
-		}		
 
+		if ((t + 60) < time(NULL)) {
+			client_keepalive(socketfd);
+			t = time(NULL);
+		}
 
 		usleep(5000);
 	} 
@@ -242,6 +254,7 @@ void client_prepare(char *input, char *payload, char *channel) {
 			strlcpy(channel, field2, CHANNEL_SIZE);
 		} else if (strcmp(command, "leave") == 0) {
 			type = 3;
+			strlcpy(channel, "Common", CHANNEL_SIZE);
 		} else if (strcmp(command, "list") == 0) {
 			type = 5;
 		} else if (strcmp(command, "who") == 0) {
@@ -314,6 +327,27 @@ void client_login(int socketfd, char *nick) {
 
 }
 
+void client_keepalive(int socketfd) {
+	char payload[4];
+	unsigned int size;
+	int i;
+
+	memset(payload, 0, sizeof(payload));
+	i = 7;
+	memcpy(payload, &i, sizeof(i));
+
+	size = payload_size(payload);
+
+	if ((i = send(socketfd, payload, size, 0)) == -1) {
+		perror("client: send failed\n");
+	}
+
+#if DEBUG > 0
+	printf("DEBUG: sent %d bytes, keepalive\n", i);
+#endif
+
+}
+
 unsigned int payload_size(char *payload) {
 	int i;
 
@@ -359,6 +393,8 @@ void display(char *dgram) {
 
 	memcpy(&i, dgram, sizeof(i));
 
+	printf("\b\b");
+
 	switch (i) {
 		case 0:
 			printf("[%s][%s]: %s", &dgram[4], 
@@ -366,14 +402,14 @@ void display(char *dgram) {
 			break;
 		case 1:
 			memcpy(&j, &dgram[sizeof(i)], sizeof(j));
-			printf("Existing channels:\n");
+			printf("Existing channels:\n  ");
 			for (k = 0; k < j; k++) 
 				printf("%s ", &dgram[4+4+k*sizeof(j)]);
 
 			break;
 		case 2:
 			memcpy(&j, &dgram[sizeof(i)], sizeof(j));
-			printf("Users on channel %s:\n", &dgram[4+4]);
+			printf("Users on channel %s:\n  ", &dgram[4+4]);
 			for (k = 0; k < j; k++) 
 				printf("%s ", &dgram[4+4+32+k*sizeof(j)]);
 			break;
@@ -382,4 +418,6 @@ void display(char *dgram) {
 		default:
 			break;
 	}
+
+	printf("\n> ");
 }
