@@ -33,6 +33,7 @@
 #define DEBUG 2
 #define CHANNEL_SIZE 32
 #define PAYLOAD_SIZE 100
+
 int main(int argc, char *argv[]) {
 	char *host, *port, *nick;
 	int socketfd, status;
@@ -71,7 +72,13 @@ int main(int argc, char *argv[]) {
 			continue;
 		} else {
 			break;
-		}
+
+		if (connect(socketfd, p->ai_addr, p->ai_addrlen) == -1) {
+			close(socketfd);
+			perror("client: connect");
+			continue;
+		} else
+			break;
 	}
 
 	if (p == NULL) {
@@ -84,12 +91,16 @@ int main(int argc, char *argv[]) {
 	printf("DEBUG: socket worked\n");
 #endif
 
+}
+#if DEBUG > 1
+	printf("DEBUG: connect worked\n");
+#endif
 
-	client_login(socketfd, p, nick);
+	client_login(socketfd, nick);
 
 	raw_mode();
 	setbuf(stdin, NULL); // Black Magic
-	status = ui_loop(socketfd, p);
+	status = ui_loop(socketfd);
 
 	// Clean Up
 	freeaddrinfo(servinfo);
@@ -100,11 +111,11 @@ int main(int argc, char *argv[]) {
 	return status; 
 }
 
-int ui_loop(int socketfd, struct addrinfo *p) {
+int ui_loop(int socketfd) {
 	char input[65], buf[65]; //64 bytes we can send, plus newline
 	char payload[PAYLOAD_SIZE]; 
 	char channel[CHANNEL_SIZE] = "Common";
-	int num, i, process = 0;
+	int num, i, run = 1, process = 0;
 
 	fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
 	fcntl(socketfd, F_SETFL, O_NONBLOCK);
@@ -113,7 +124,7 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 	memset(buf, 0, sizeof(buf));
 
 
-	do {
+	while (run != 0) {
 		// Get Keyboard input! Hurray!
 		num = read(STDIN_FILENO, buf, sizeof(buf));
 		// If were longer than input, it will truncate...
@@ -129,6 +140,10 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 				// testing this i found it to be twice the keyboard repeat rate, so
 				// so we should be fine
 				input[strlen(input) -1] = '\0';
+
+				// do we loop again?
+				run = strcmp(input, "/exit");
+
 				break;
 			}
 			num--;
@@ -152,8 +167,7 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 				continue;
 			}
 
-			if ((num = sendto(socketfd, payload, i, 0,
-							p->ai_addr, p->ai_addrlen)) == -1) {
+			if ((num = send(socketfd, payload, i, 0)) == -1) {
 				perror("client: sendto failed\n");
 				return 4;
 			}
@@ -169,7 +183,7 @@ int ui_loop(int socketfd, struct addrinfo *p) {
 
 		}
 		usleep(5000);
-	} while (strcmp(input, "/exit") && process);
+	} 
 
 	return 0;
 }
@@ -199,33 +213,19 @@ void client_prepare(char *input, char *payload, char *channel) {
 
 		if (strcmp(command, "exit") == 0) {
 			type = 1;
-			memset(field2, 0, sizeof(field2));
-			memset(field3, 0, sizeof(field3));
-
 		} else if (strcmp(command, "join") == 0) {
 			type = 2;
 			strlcpy(channel, field2, CHANNEL_SIZE);
-			memset(field3, 0, sizeof(field3));
-
 		} else if (strcmp(command, "leave") == 0) {
 			type = 3;
-			memset(field3, 0, sizeof(field3));
-
 		} else if (strcmp(command, "list") == 0) {
 			type = 5;
-			memset(field2, 0, sizeof(field2));
-			memset(field3, 0, sizeof(field3));
-
 		} else if (strcmp(command, "who") == 0) {
 			type = 6;
-			memset(field3, 0, sizeof(field3));
-
 		} else if (strcmp(command, "switch") == 0) {
 			// No type, all client side, but counts as a keep alive
 			type = 7;
 			strlcpy(channel, field2, CHANNEL_SIZE);
-			memset(field2, 0, sizeof(field2));
-			memset(field3, 0, sizeof(field3));
 		} else {
 			// Bad command
 			type = -1;
@@ -252,7 +252,7 @@ void client_prepare(char *input, char *payload, char *channel) {
 	return;
 }
 
-void client_login(int socketfd, struct addrinfo *p, char *nick) {
+void client_login(int socketfd, char *nick) {
 	int i = 0;
 	unsigned int size;
 	char payload[36], channel[7] = "Common"; // 4 bytes for type, 32 for nick
@@ -263,9 +263,8 @@ void client_login(int socketfd, struct addrinfo *p, char *nick) {
 
 	size = payload_size(payload);
 
-	if ((i = sendto(socketfd, payload, size, 0,
-					p->ai_addr, p->ai_addrlen)) == -1) {
-		perror("client: sendto failed\n");
+	if ((i = send(socketfd, payload, size, 0)) == -1) {
+		perror("client: send failed\n");
 	}
 
 #if DEBUG > 0
@@ -281,9 +280,8 @@ void client_login(int socketfd, struct addrinfo *p, char *nick) {
 
 	size = payload_size(payload);
 
-	if ((i = sendto(socketfd, payload, size, 0,
-					p->ai_addr, p->ai_addrlen)) == -1) {
-		perror("client: sendto failed\n");
+	if ((i = send(socketfd, payload, size, 0)) == -1) {
+		perror("client: send failed\n");
 	}
 
 #if DEBUG > 0
