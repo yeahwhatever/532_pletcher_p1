@@ -33,6 +33,7 @@
 #define DEBUG 2
 #define CHANNEL_SIZE 32
 #define PAYLOAD_SIZE 100
+#define DGRAM_SIZE 1024
 
 int main(int argc, char *argv[]) {
 	char *host, *port, *nick;
@@ -111,6 +112,7 @@ int ui_loop(int socketfd) {
 	char input[65], buf[65]; //64 bytes we can send, plus newline
 	char payload[PAYLOAD_SIZE]; 
 	char channel[CHANNEL_SIZE] = "Common";
+	char dgram[DGRAM_SIZE];
 	int num, i, run = 1, process = 0;
 
 	fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
@@ -176,8 +178,21 @@ int ui_loop(int socketfd) {
 			memset(input, 0, sizeof(input));
 			memset(buf, 0, sizeof(buf));
 			process = 0;
-
 		}
+
+		// Ok, now that we send everything, lets check if we have anything
+		// to recieve. An important note here, Im just allocating a meg to
+		// recieve whatever the server sends instead of malloc'ing the exact
+		// ammount needed. Just allocating a meg at the start of the program
+		// will probably be faster than going back to the heap every time we
+		// get a packet.
+		num = recv(socketfd, dgram, DGRAM_SIZE, 0);
+
+		if (num > -1)
+			printf("[%s][%s]: %s\n", &dgram[4], &dgram[36], &dgram[100]);
+			
+
+
 		usleep(5000);
 	} 
 
