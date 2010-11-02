@@ -189,7 +189,7 @@ int ui_loop(int socketfd) {
 		num = recv(socketfd, dgram, DGRAM_SIZE, 0);
 
 		if (num > -1)
-			printf("[%s][%s]: %s\n", &dgram[4], &dgram[36], &dgram[100]);
+			printf("[%s][%s]: %s\n", &dgram[4], &dgram[36], &dgram[68]);
 			
 
 
