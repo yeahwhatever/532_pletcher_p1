@@ -67,18 +67,18 @@ int main(int argc, char *argv[]) {
 		// If we cant create the socket, error and continue
 		// otherwise break
 		if ((socketfd = socket(p->ai_family, p->ai_socktype,
-			p->ai_protocol)) == -1) {
+						p->ai_protocol)) == -1) {
 			perror("client: call to socket failed");
 			continue;
-		} else {
-			break;
+		}
 
 		if (connect(socketfd, p->ai_addr, p->ai_addrlen) == -1) {
 			close(socketfd);
 			perror("client: connect");
 			continue;
-		} else
-			break;
+		}
+
+		break;
 	}
 
 	if (p == NULL) {
@@ -88,13 +88,9 @@ int main(int argc, char *argv[]) {
 
 
 #if DEBUG > 1
-	printf("DEBUG: socket worked\n");
+	printf("DEBUG: socket/connect worked\n");
 #endif
 
-}
-#if DEBUG > 1
-	printf("DEBUG: connect worked\n");
-#endif
 
 	client_login(socketfd, nick);
 
