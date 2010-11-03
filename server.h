@@ -15,7 +15,7 @@ typedef struct _user {
 } user;
 
 int listen_loop(int socketfd);
-void parse_dgram(char *payload, channel *clist, user *ulist);
-void login(char *payload, user *ulist, channel *clist);
+void parse_dgram(char *payload, channel **clist, user **ulist);
+void login(char *payload, user **u_list, channel **c_list);
 
 #endif

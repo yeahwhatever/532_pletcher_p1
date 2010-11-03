@@ -111,11 +111,11 @@ int listen_loop(int socketfd) {
 							(struct sockaddr *)&from, &fromlen)) == -1) 
 				perror("server: recvfrom");
 
-		parse_dgram(buf, clist, ulist);		
+		parse_dgram(buf, &clist, &ulist);		
 	}
 }
 
-void parse_dgram(char *payload, channel *clist, user *ulist) {
+void parse_dgram(char *payload, channel **clist, user **ulist) {
 	int type;
 
 	memcpy(&type, payload, sizeof(type));
@@ -152,8 +152,13 @@ void parse_dgram(char *payload, channel *clist, user *ulist) {
 	}
 }
 
-void login(char *payload, user *ulist, channel *clist) {
+void login(char *payload, user **u_list, channel **c_list) {
+	user *ulist;
+	channel *clist;
 	user *uptr;
+
+	ulist = *u_list;
+	clist = *c_list;
 
 	if (ulist) {
 		while (ulist->next != NULL)
@@ -201,4 +206,7 @@ void login(char *payload, user *ulist, channel *clist) {
 	uptr->t = NULL;
 	uptr->channel_list = NULL;
 	uptr->next = NULL;
+
+	*c_list = clist;
+	*u_list = ulist;
 }
