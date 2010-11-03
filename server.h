@@ -1,20 +1,21 @@
 #ifndef SERVER_H
 #define SERVER_H
 
-typedef struct {
+typedef struct _channel {
 	char name[32];
-	struct user *user_list;
-	struct channel *next;
+	struct _user *user_list;
+	struct _channel *next;
 } channel;
 
-typedef struct {
+typedef struct _user {
 	char name[32];
 	time_t t;
-	struct channel *channel_list;
-	struct user *next;
+	struct _channel *channel_list;
+	struct _user *next;
 } user;
 
 int listen_loop(int socketfd);
-void parse_dgram(char *payload);
+void parse_dgram(char *payload, channel *clist, user *ulist);
+void login(char *payload, user *ulist, channel *clist);
 
 #endif

@@ -116,6 +116,7 @@ int ui_loop(int socketfd) {
 	char channel[CHANNEL_SIZE] = "Common";
 	char dgram[DGRAM_SIZE];
 	int i, num, run = 1, process = 0, num_recv = 0;
+	unsigned int j;
 	time_t t;
 
 	fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
@@ -133,8 +134,12 @@ int ui_loop(int socketfd) {
 		num = read(STDIN_FILENO, buf, sizeof(buf));
 		// If were longer than input, it will truncate...
 
-		if (num > -1)
+		if (num > -1) {
+			for (j = 0; j < strlen(input); j++)
+				printf("\b");
 			strlcat(input, buf, sizeof(input));
+			printf("%s", input);
+		}
 
 		while (num > -1) {
 			if (buf[num] == '\n') {
@@ -203,6 +208,13 @@ int ui_loop(int socketfd) {
 #if DEBUG > 0
 			printf("DEBUG: sent %d bytes\n", num);
 #endif
+
+			// This breaks my nice clean presentation and processing
+			// abstraction, but thanks to terminals functioning the way
+			// they do its required.
+			printf("\b");
+			for (j = 0; j < strlen(input); j++)
+				printf("\b");
 
 			// Reset.
 			memset(buf, 0, sizeof(buf));
@@ -365,12 +377,11 @@ int check_size(char *dgram) {
 
 void display(char *dgram, char *input) {
 	int i, j, k;
+	unsigned int m;
 
 	memcpy(&i, dgram, sizeof(i));
 
-	printf("\b");
-	k = strlen(input);
-	for (j = 0; j < k; j++)
+	for (m = 0; m < strlen(input) + 1; m++)
 		printf("\b");
 
 	switch (i) {

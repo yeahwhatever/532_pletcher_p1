@@ -124,6 +124,7 @@ void parse_dgram(char *payload, channel *clist, user *ulist) {
 		case 0:
 			login(payload, ulist, clist);
 			break;
+			/*
 		case 1:
 			logout(payload, ulist, clist);
 			break;
@@ -147,25 +148,57 @@ void parse_dgram(char *payload, channel *clist, user *ulist) {
 			break;
 		default:
 			//error
+			*/
 	}
 }
 
 void login(char *payload, user *ulist, channel *clist) {
+	user *uptr;
+
 	if (ulist) {
 		while (ulist->next != NULL)
 			ulist = ulist->next;
 
 		ulist->next = xmalloc(sizeof(user));
 		ulist = ulist->next;
-		strlcpy(ulist->name, &payload[4], sizeof(user->name));
-		user->next = NULL;
-	} else {
+	} else 
 		ulist = xmalloc(sizeof(user));
-		strlcpy(ulist->name, &payload[4], sizeof(user->name));
-		user->next = NULL;
-	}
+
+	// Put the username in the userlist
+	strlcpy(ulist->name, &payload[4], sizeof(ulist->name));
+	// Set user time
+	ulist->t = time(NULL);
+	// Create a channel list for the user. Note we won't use the user_list
+	// field here. Set the channel name to Common
+	ulist->channel_list = xmalloc(sizeof(channel));
+	ulist->channel_list->user_list = NULL;
+	ulist->channel_list->next = NULL;
+	strlcpy(ulist->channel_list->name, "Common", sizeof(ulist->name));
+	ulist->next = NULL;
 
 	if (clist) {
+		while (clist && strcmp(clist->name, "Common"))
+			clist = clist->next;
 
+		if (!clist) {
+			fprintf(stderr, "No common channel.\n");
+			exit(1);
+		}
+		
+	} else {
+		clist = xmalloc(sizeof(channel));
+		strlcpy(clist->name, "Common", sizeof(ulist->name));
+		clist->user_list = xmalloc(sizeof(user));
+		clist->user_list->next = NULL;
+		clist->next = NULL;
 	}
+
+	uptr = clist->user_list;
+	while (uptr->next != NULL)
+		uptr = uptr->next;
+
+	strlcpy(uptr->name, &payload[4], sizeof(ulist->name));
+	uptr->t = NULL;
+	uptr->channel_list = NULL;
+	uptr->next = NULL;
 }
