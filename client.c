@@ -31,7 +31,7 @@
 #include "raw.h"
 #include "client.h"
 
-#define DEBUG 2
+#define DEBUG 0
 #define CHANNEL_SIZE 32
 #define PAYLOAD_SIZE 100
 #define DGRAM_SIZE 1024
@@ -97,7 +97,6 @@ int main(int argc, char *argv[]) {
 	client_login(socketfd, nick);
 
 	raw_mode();
-	setbuf(stdin, NULL); // Black Magic
 	status = ui_loop(socketfd);
 
 	printf("\n");
@@ -127,7 +126,7 @@ int ui_loop(int socketfd) {
 
 	t = time(NULL);
 
-	printf("> ");
+	printf(">");
 
 	while (run != 0) {
 		// Get Keyboard input! Hurray!
@@ -152,6 +151,28 @@ int ui_loop(int socketfd) {
 				break;
 			}
 			num--;
+		}
+
+		// Ok, now that we send everything, lets check if we have anything
+		// to recieve. An important note here, Im just allocating a meg to
+		// recieve whatever the server sends instead of malloc'ing the exact
+		// ammount needed. Just allocating a meg at the start of the program
+		// will probably be faster than going back to the heap every time we
+		// get a packet.
+		if (num_recv <= 0)
+			num_recv = recv(socketfd, dgram, DGRAM_SIZE, 0);
+		else {
+			i = recv(socketfd, &dgram[num_recv], 
+					DGRAM_SIZE - num_recv, 0);
+			num_recv += i;
+		}
+
+		// If we've gotten fewer than 4 bytes, we cant even tell the type so bail
+		if (num_recv > 4 && check_size(dgram) == num_recv) {
+				display(dgram, input);
+				// Rest
+				num_recv = 0;
+				memset(dgram, 0, sizeof(dgram));
 		}
 
 		if (process) {
@@ -184,39 +205,17 @@ int ui_loop(int socketfd) {
 #endif
 
 			// Reset.
-			memset(input, 0, sizeof(input));
 			memset(buf, 0, sizeof(buf));
+			memset(input, 0, sizeof(input));
 			process = 0;
 		}
-
-		// Ok, now that we send everything, lets check if we have anything
-		// to recieve. An important note here, Im just allocating a meg to
-		// recieve whatever the server sends instead of malloc'ing the exact
-		// ammount needed. Just allocating a meg at the start of the program
-		// will probably be faster than going back to the heap every time we
-		// get a packet.
-		if (num_recv <= 0)
-			num_recv = recv(socketfd, dgram, DGRAM_SIZE, 0);
-		else {
-			i = recv(socketfd, &dgram[num_recv], 
-					DGRAM_SIZE - num_recv, 0);
-			num_recv += i;
-		}
-
-		// If we've gotten fewer than 4 bytes, we cant even tell the type so bail
-		if (num_recv > 4 && check_size(dgram) == num_recv) {
-				display(dgram);
-				// Rest
-				num_recv = 0;
-				memset(dgram, 0, sizeof(dgram));
-		}
-
 
 		if ((t + 60) < time(NULL)) {
 			client_keepalive(socketfd);
 			t = time(NULL);
 		}
 
+		fflush(stdin);
 		usleep(5000);
 	} 
 
@@ -364,17 +363,21 @@ int check_size(char *dgram) {
 	return -1;
 }
 
-void display(char *dgram) {
+void display(char *dgram, char *input) {
 	int i, j, k;
 
 	memcpy(&i, dgram, sizeof(i));
 
-	printf("\b\b");
+	printf("\b");
+	k = strlen(input);
+	for (j = 0; j < k; j++)
+		printf("\b");
 
 	switch (i) {
 		case 0:
 			printf("[%s][%s]: %s", &dgram[4], 
 					&dgram[4+32], &dgram[4+32+32]);
+
 			break;
 		case 1:
 			memcpy(&j, &dgram[sizeof(i)], sizeof(j));
@@ -388,6 +391,7 @@ void display(char *dgram) {
 			printf("Users on channel %s:\n  ", &dgram[4+4]);
 			for (k = 0; k < j; k++) 
 				printf("%s ", &dgram[4+4+32+k*sizeof(j)]);
+
 			break;
 		case 3:
 			break;
@@ -395,5 +399,5 @@ void display(char *dgram) {
 			break;
 	}
 
-	printf("\n> ");
+	printf("\n>%s", input);
 }
