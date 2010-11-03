@@ -116,8 +116,7 @@ int ui_loop(int socketfd) {
 	char payload[PAYLOAD_SIZE]; 
 	char channel[CHANNEL_SIZE] = "Common";
 	char dgram[DGRAM_SIZE];
-	int num, run = 1, process = 0, num_recv = 0;
-	unsigned int i;
+	int i, num, run = 1, process = 0, num_recv = 0;
 	time_t t;
 
 	fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
@@ -290,8 +289,7 @@ void client_prepare(char *input, char *payload, char *channel) {
 }
 
 void client_login(int socketfd, char *nick) {
-	int i = 0;
-	unsigned int size;
+	int i = 0, size;
 	char payload[36], channel[7] = "Common"; // 4 bytes for type, 32 for nick
 
 	memset(payload, 0, sizeof(payload));
@@ -329,8 +327,7 @@ void client_login(int socketfd, char *nick) {
 
 void client_keepalive(int socketfd) {
 	char payload[4];
-	unsigned int size;
-	int i;
+	int i, size;
 
 	memset(payload, 0, sizeof(payload));
 	i = 7;
@@ -346,27 +343,6 @@ void client_keepalive(int socketfd) {
 	printf("DEBUG: sent %d bytes, keepalive\n", i);
 #endif
 
-}
-
-unsigned int payload_size(char *payload) {
-	int i;
-
-	memcpy(&i, payload, sizeof(i));
-
-	if (i == -1) 
-		return 0;
-
-	if (i == 1 || i == 5 || i == 7)
-		return 4;
-
-	if (i == 0 || i == 2 || i == 3 || i == 6)
-		return 4+32;
-
-	if (i == 4)
-		return 4+32+64;
-
-	// Shouldnt be reached, if it is return error state
-	return 0;
 }
 
 int check_size(char *dgram) {
