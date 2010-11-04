@@ -20,7 +20,7 @@ void parse_dgram(char *payload, struct sockaddr_storage from,
 		channel **clist, user **ulist);
 void login(char *payload, struct sockaddr_storage from, 
 		user **u_list, channel **c_list);
-void logout(char *payload, struct sockaddr_storage from,
-		user **u_list, channel **c_list);
+void logout(struct sockaddr_storage from, user **u_list, channel **c_list);
+void user_remove(user **u_list, struct sockaddr_storage from);
 
 #endif

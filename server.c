@@ -125,10 +125,10 @@ void parse_dgram(char *payload, struct sockaddr_storage from,
 		case 0:
 			login(payload, from, ulist, clist);
 			break;
-			/*
 		case 1:
-			logout(payload, from, ulist, clist);
+			logout(from, ulist, clist);
 			break;
+			/*
 		case 2:
 			join(payload, ulist, clist);
 			break;
@@ -215,12 +215,124 @@ void login(char *payload, struct sockaddr_storage from,
 	*u_list = ulist;
 }
 
-/*
-void logout(char *payload, struct sockaddr_storage from,
+void logout(struct sockaddr_storage from,
 		user **u_list, channel **c_list) {
-	from = NULL;
-	payload = NULL;
-	u_list = NULL;
-	c_list = NULL;
+	user *ulist, *uptr;
+	channel *clist, *cptr;
+
+	ulist = *u_list;
+	clist = *c_list;
+	uptr = NULL;
+	cptr = NULL;
+
+	// Bail if null
+	if (!ulist || !clist) {
+		fprintf(stderr, "userlist or channel list are null\n");
+		return;
+	}
+
+	user_remove(u_list, from);
+
+	while (clist) {
+		user_remove(&(clist->user_list), from);
+		// Userlist is null, channel is empty
+		// Note we dont care about channel->user->channel
+		if (!clist->user_list) {
+			// If first
+			if (!cptr) {
+				cptr = clist->next;
+				free(clist);
+				clist = cptr;
+				break;
+			// Middle or last
+			} else {
+				cptr->next = clist->next;
+				free(clist);
+				break;
+			}
+		}
+		cptr = clist;
+		clist = clist->next;
+	}
+
+	*c_list = clist;
 }
-*/
+
+void user_remove(user **u_list, struct sockaddr_storage from) {
+	struct sockaddr_in sa_1, sa_2;
+	struct sockaddr_in6 sa6_1, sa6_2;
+
+	user *ulist, *uptr;
+	channel *cptr;
+
+	ulist = *u_list;
+	uptr = NULL;
+	cptr = NULL;
+
+	while (ulist) {
+		// IPv44
+		if (from.ss_family == AF_INET && ulist->address.ss_family == AF_INET) {
+			sa_1 = *((struct sockaddr_in *)&from);
+			sa_2 = *((struct sockaddr_in *)&(ulist->address));
+
+			if (sa_1.sin_port != sa_2.sin_port || 
+					sa_1.sin_addr.s_addr != sa_2.sin_addr.s_addr) {
+				// Not a match, skip
+				uptr = ulist;
+				ulist = ulist->next;
+				continue;
+			}
+		// IPv6
+		} else if (from.ss_family == AF_INET6 && 
+				ulist->address.ss_family == AF_INET6) {
+			sa6_1 = *((struct sockaddr_in6 *)&from);
+			sa6_2 = *((struct sockaddr_in6 *)&(ulist->address));
+
+			if (sa6_1.sin6_port != sa6_2.sin6_port || 
+					!memcmp(sa6_1.sin6_addr.s6_addr, sa6_2.sin6_addr.s6_addr,
+					sizeof(sa6_1.sin6_addr.s6_addr))) {
+				// Not a match, skip
+				uptr = ulist;
+				ulist = ulist->next;
+				continue;
+			}
+		} else {
+			uptr = ulist;
+			ulist = ulist->next;
+			continue;
+
+		}
+
+		// We have a match!
+
+		// If first
+		if (uptr == NULL) {
+			// Store next, this will be new head
+			uptr = ulist->next;
+			// Need to free channels
+			cptr = ulist->channel_list;
+			while (cptr) {
+				cptr = cptr->next;
+				free(cptr);
+			}
+			// Free ulist, set old 2nd to head
+			free(ulist);
+			ulist = uptr;
+			break;
+			// If in the middle, or last
+		} else {
+			// Clear channels
+			cptr = ulist->channel_list;
+			while (cptr) {
+				cptr = cptr->next;
+				free(cptr);
+			}
+			// uptr points to prev, so we want to skip to next
+			uptr->next = ulist->next;
+			free(ulist);
+			break;
+		}
+	}
+
+	*u_list = ulist;
+}
