@@ -107,12 +107,12 @@ int listen_loop(int socketfd) {
 			perror("server: recvfrom");
 
 		// Make sure we get all the data from this guy.
-		while (num > 4 && payload_size(buf) != num)
+		while (num >= 4 && payload_size(buf) != num)
 			if ((num = recvfrom(socketfd, &buf[num], sizeof(buf) - num, 0, 
 							(struct sockaddr *)&from, &fromlen)) == -1) 
 				perror("server: recvfrom");
 
-		if (num > 4)
+		if (num >= 4)
 			parse_dgram(socketfd, fromlen, buf, from, &clist, &ulist);		
 	}
 }
@@ -139,13 +139,13 @@ void parse_dgram(int socketfd, socklen_t fromlen, char *payload, struct sockaddr
 		case 4:
 			say(socketfd, fromlen, payload, from, ulist, clist);
 			break;
-			/*
 		case 5:
-			list(payload, ulist, clist);
+			list(socketfd, fromlen, from, clist);
 			break;
 		case 6:
-			who(payload, ulist, clist);
+			who(socketfd, fromlen, from, payload, clist);
 			break;
+			/*
 		case 7:
 			keepalive(payload, ulist, clist);
 			break;
@@ -229,11 +229,10 @@ void login(char *payload, struct sockaddr_storage from,
 
 void logout(struct sockaddr_storage from,
 		user **u_list, channel **c_list) {
-	user *uhead, *ulist, *uptr;
+	user *ulist, *uptr;
 	channel *chead, *clist, *cptr;
 
 	ulist = *u_list;
-	uhead = *u_list;
 	clist = *c_list;
 	chead = *c_list;
 	uptr = NULL;
@@ -276,50 +275,46 @@ void logout(struct sockaddr_storage from,
 }
 
 void user_remove(user **u_list, struct sockaddr_storage from) {
-	user *uhead, *ulist, *uptr;
+	user *ulist, *uptr;
 	channel *cptr;
 
 	ulist = *u_list;
 	uptr = NULL;
 	cptr = NULL;
 
-	while (ulist) {
-		if (sockaddr_storage_equal(&from, &(ulist->address))) {
+	while (ulist) 
+		if (!sockaddr_storage_equal(&from, &(ulist->address)))
+			break;
+		else {
 			uptr = ulist;
 			ulist = ulist->next;
-			continue;
 		}
-		// We have a match!
 
-		// If first
-		if (uptr == NULL) {
-			// Need to free channels
-			cptr = ulist->channel_list;
-			while (cptr) {
-				cptr = cptr->next;
-				free(cptr);
-			}
-			// Free ulist, set old 2nd to head
-			free(ulist);
-			ulist = uptr;
-			uhead = ulist;
-			break;
-			// If in the middle, or last
-		} else {
-			// Clear channels
-			cptr = ulist->channel_list;
-			while (cptr) {
-				cptr = cptr->next;
-				free(cptr);
-			}
-			// uptr points to prev, so we want to skip to next
-			uptr->next = ulist->next;
-			free(ulist);
-			break;
+	// We have a match!
+
+	// If first
+	if (ulist && !uptr) {
+		// Need to free channels
+		cptr = ulist->channel_list;
+		while (cptr) {
+			cptr = cptr->next;
+			free(cptr);
 		}
+		// Free ulist, set old 2nd to head
+		*u_list = ulist->next;
+		free(ulist);
+		// If in the middle, or last
+	} else if (ulist) {
+		// Clear channels
+		cptr = ulist->channel_list;
+		while (cptr) {
+			cptr = cptr->next;
+			free(cptr);
+		}
+		// uptr points to prev, so we want to skip to next
+		uptr->next = ulist->next;
+		free(ulist);
 	}
-
-	*u_list = uhead;
 }
 
 int sockaddr_storage_equal(struct sockaddr_storage *f1,
@@ -334,7 +329,7 @@ int sockaddr_storage_equal(struct sockaddr_storage *f1,
 		if (sa_1.sin_port != sa_2.sin_port || 
 				sa_1.sin_addr.s_addr != sa_2.sin_addr.s_addr)
 			return 1;
-			// Not a match, skip
+		// Not a match, skip
 		// IPv6
 	} else if (f1->ss_family == AF_INET6 && 
 			f2->ss_family == AF_INET6) {
@@ -552,4 +547,93 @@ void say(int socketfd, socklen_t fromlen, char *payload,
 		uptr = uptr->next;
 	}
 
+}
+
+void list(int socketfd, socklen_t fromlen,
+		struct sockaddr_storage from, channel **c_list) {
+	channel *cptr;
+	char *buf;
+	int num, i = 0;
+
+
+	cptr = *c_list;
+	while (cptr) {
+		i++;
+		cptr = cptr->next;
+	}
+	cptr = *c_list;
+
+	buf = xmalloc(4+4+i*32);
+	
+	memset(buf, 0, 4+4+i*32);
+
+	memcpy(&buf[4], &i, sizeof(int));
+	i = 1;
+	memcpy(buf, &i, sizeof(int));
+
+	i = 0;
+	while (cptr) {
+		memcpy(&buf[8+i*32], cptr->name, sizeof(cptr->name));
+		i++;
+		cptr = cptr->next;
+	}
+
+	if ((num = sendto(socketfd, buf, 4+4+i*32, 0, 
+					(struct sockaddr *)&from, 
+					fromlen)) == -1) {
+		perror("server: sendto");
+	}
+
+	free(buf);
+}
+
+void who(int socketfd, socklen_t fromlen, struct sockaddr_storage from, 
+		char *payload, channel **c_list) {
+	int i = 0, num;
+
+	channel *cptr;
+	user *uptr;
+	char *buf;
+
+	cptr = *c_list;
+
+	while (cptr) {
+		if (!strcmp(cptr->name, &payload[4])) 
+			break;
+		cptr = cptr->next;
+	}
+
+	if (!cptr)
+		return;
+
+	uptr = cptr->user_list;
+
+	while (uptr) {
+		i++;
+		uptr = uptr->next;
+	}
+
+	buf = xmalloc(4+4+32+i*32);
+
+	memset(buf, 0, 4+4+i*32);
+	memcpy(&buf[4], &i, sizeof(i));
+	i = 2;
+	memcpy(buf, &i, sizeof(i));
+	i = 0;
+	memcpy(&buf[8], cptr->name, sizeof(cptr->name));
+
+	uptr = cptr->user_list;
+	while (uptr) {
+		memcpy(&buf[40+i*32], uptr->name, sizeof(uptr->name));
+		i++;
+		uptr = uptr->next;
+	}
+
+	if ((num = sendto(socketfd, buf, 40+i*32, 0, 
+					(struct sockaddr *)&from, 
+					fromlen)) == -1) {
+		perror("server: sendto");
+	}
+
+	free(buf);
 }

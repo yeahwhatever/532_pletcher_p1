@@ -31,5 +31,9 @@ void leave(char *payload, struct sockaddr_storage from,
 		user **u_list, channel **c_list);
 void say(int socketfd, socklen_t fromlen, char *payload, 
 		struct sockaddr_storage from, user **u_list, channel **c_list);
+void list(int socketfd, socklen_t fromlen, 
+		struct sockaddr_storage from, channel **c_list);
+void who(int socketfd, socklen_t fromlen, 
+		struct sockaddr_storage from, char *payload, channel **c_list);
 
 #endif
