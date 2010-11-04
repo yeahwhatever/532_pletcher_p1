@@ -139,6 +139,7 @@ int ui_loop(int socketfd) {
 				printf("\b");
 			strlcat(input, buf, sizeof(input));
 			printf("%s", input);
+			fflush(stdin);
 		}
 
 		while (num > -1) {

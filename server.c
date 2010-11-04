@@ -78,6 +78,8 @@ int main(int argc, char *argv[]) {
         return 3;
     }
 
+	fcntl(socketfd, F_SETFL, O_NONBLOCK);
+
 	status = listen_loop(socketfd);
 
 	freeaddrinfo(servinfo);
@@ -102,18 +104,20 @@ int listen_loop(int socketfd) {
 		// If we read fewer than 4 bytes, were probably screwed anyways
 		// Im pretty sure this will be rare enough that we don't need to worry
 		// about it
-		if ((num = recvfrom(socketfd, buf, sizeof(buf), 0, 
-			(struct sockaddr *)&from, &fromlen)) == -1) 
-			perror("server: recvfrom");
+		num = recvfrom(socketfd, buf, sizeof(buf), 0, 
+			(struct sockaddr *)&from, &fromlen);
 
 		// Make sure we get all the data from this guy.
 		while (num >= 4 && payload_size(buf) != num)
-			if ((num = recvfrom(socketfd, &buf[num], sizeof(buf) - num, 0, 
-							(struct sockaddr *)&from, &fromlen)) == -1) 
-				perror("server: recvfrom");
+			num = recvfrom(socketfd, &buf[num], sizeof(buf) - num, 0, 
+							(struct sockaddr *)&from, &fromlen); 
 
 		if (num >= 4)
-			parse_dgram(socketfd, fromlen, buf, from, &clist, &ulist);		
+			parse_dgram(socketfd, fromlen, buf, from, &clist, &ulist);
+
+		timeout(&ulist, &clist);
+
+		usleep(5000);		
 	}
 }
 
@@ -140,18 +144,16 @@ void parse_dgram(int socketfd, socklen_t fromlen, char *payload, struct sockaddr
 			say(socketfd, fromlen, payload, from, ulist, clist);
 			break;
 		case 5:
-			list(socketfd, fromlen, from, clist);
+			list(socketfd, fromlen, from, ulist, clist);
 			break;
 		case 6:
-			who(socketfd, fromlen, from, payload, clist);
+			who(socketfd, fromlen, from, payload, ulist, clist);
 			break;
-			/*
 		case 7:
-			keepalive(payload, ulist, clist);
+			keepalive(from, ulist);
 			break;
 		default:
-			//error
-			*/
+			err(socketfd, from, fromlen);
 	}
 }
 
@@ -167,8 +169,15 @@ void login(char *payload, struct sockaddr_storage from,
 	//chead = *c_list;
 
 	if (ulist) {
-		while (ulist->next != NULL)
+		while (ulist->next) {
+			// User is already logged in.
+			if (!strcmp(ulist->name, &payload[4])) {
+				ulist->address = from;
+				ulist->t = time(NULL);
+				return;
+			}
 			ulist = ulist->next;
+		}
 
 		ulist->next = xmalloc(sizeof(user));
 		ulist = ulist->next;
@@ -550,11 +559,16 @@ void say(int socketfd, socklen_t fromlen, char *payload,
 }
 
 void list(int socketfd, socklen_t fromlen,
-		struct sockaddr_storage from, channel **c_list) {
+		struct sockaddr_storage from, user **u_list,  channel **c_list) {
 	channel *cptr;
+	user *uptr;
 	char *buf;
 	int num, i = 0;
 
+	uptr = user_lookup(&from, *u_list);
+
+	if (uptr)
+		uptr->t = time(NULL);
 
 	cptr = *c_list;
 	while (cptr) {
@@ -588,12 +602,17 @@ void list(int socketfd, socklen_t fromlen,
 }
 
 void who(int socketfd, socklen_t fromlen, struct sockaddr_storage from, 
-		char *payload, channel **c_list) {
+		char *payload, user **u_list, channel **c_list) {
 	int i = 0, num;
 
 	channel *cptr;
 	user *uptr;
 	char *buf;
+
+	uptr = user_lookup(&from, *u_list);
+
+	if (uptr)
+		uptr->t = time(NULL);
 
 	cptr = *c_list;
 
@@ -636,4 +655,68 @@ void who(int socketfd, socklen_t fromlen, struct sockaddr_storage from,
 	}
 
 	free(buf);
+}
+
+void keepalive(struct sockaddr_storage from, user **u_list) {
+	user *uptr;
+
+	uptr = user_lookup(&from, *u_list);
+
+	if (uptr) {
+		printf("keep alive from: %s\n", uptr->name);
+		uptr->t = time(NULL);
+	}
+}
+
+void err(int socketfd, struct sockaddr_storage from, socklen_t fromlen) {
+	// "Whatchoo talkin' 'bout?" - 25
+	char buf[29];
+	int num;
+
+	memset(buf, 0, sizeof(buf));
+	num = 3;
+	memcpy(buf, &num, sizeof(num));
+	strlcpy(&buf[4], "Whachoo talkin' 'bout?", sizeof(buf) - 4);
+
+	if ((num = sendto(socketfd, buf, sizeof(buf), 0, (struct sockaddr *)&from,
+			fromlen)) == -1) {
+		perror("server: sendto");
+	}
+
+}
+
+void timeout(user **u_list, channel **c_list) {
+	user *uptr;
+	channel *cptr, *cptr2;
+
+	uptr = *u_list;
+	while (uptr) {
+		if (uptr->t + 60 < time(NULL)) {
+			printf("timed out %s\n", uptr->name);
+			cptr = *c_list;
+			cptr2 = NULL;
+			while (cptr) {
+				user_remove(&(cptr->user_list), uptr->address);
+				// That was the last user, destroy the channel
+				if (!cptr->user_list) {
+					// First channel
+					if (!cptr2) {
+						cptr2 = cptr->next;
+						free(cptr);
+						*c_list = cptr2;
+					// Middle channel
+					} else {
+						cptr2->next = cptr->next;
+						free(cptr);
+					}
+				}
+				cptr2 = cptr;
+				cptr = cptr->next;
+			}
+
+			user_remove(u_list, uptr->address);
+		}
+		uptr = uptr->next;
+	}
+
 }

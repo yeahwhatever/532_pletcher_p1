@@ -32,8 +32,11 @@ void leave(char *payload, struct sockaddr_storage from,
 void say(int socketfd, socklen_t fromlen, char *payload, 
 		struct sockaddr_storage from, user **u_list, channel **c_list);
 void list(int socketfd, socklen_t fromlen, 
-		struct sockaddr_storage from, channel **c_list);
+		struct sockaddr_storage from, user **u_list, channel **c_list);
 void who(int socketfd, socklen_t fromlen, 
-		struct sockaddr_storage from, char *payload, channel **c_list);
-
+		struct sockaddr_storage from, char *payload, user **u_list,
+	   	channel **c_list);
+void keepalive(struct sockaddr_storage from, user **u_list);
+void err(int socketfd, struct sockaddr_storage from, socklen_t fromlen);
+void timeout(user **u_list, channel **c_list);
 #endif
