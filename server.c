@@ -268,7 +268,7 @@ void user_remove(user **u_list, struct sockaddr_storage from) {
 	cptr = NULL;
 
 	while (ulist) {
-		if (sockaddr_storage_equals(&from, &(ulist->address))) {
+		if (sockaddr_storage_equal(&from, &(ulist->address))) {
 			uptr = ulist;
 			ulist = ulist->next;
 			continue;
@@ -312,7 +312,7 @@ int sockaddr_storage_equal(struct sockaddr_storage *f1,
 	struct sockaddr_in sa_1, sa_2;
 	struct sockaddr_in6 sa6_1, sa6_2;
 	// IPv44
-	if (f1->ss_family == AF_INET && f2.ss_family == AF_INET) {
+	if (f1->ss_family == AF_INET && f2->ss_family == AF_INET) {
 		sa_1 = *((struct sockaddr_in *)f1);
 		sa_2 = *((struct sockaddr_in *)f2);
 
@@ -341,25 +341,53 @@ int sockaddr_storage_equal(struct sockaddr_storage *f1,
 }
 
 void join(char *payload, struct sockaddr_storage from, 
-		user **u_list, char **c_list) {
+		user **u_list, channel **c_list) {
 	channel *clist, *new;
-	user *ulist;
+	user *ulist, *uptr;
+
+	clist = *c_list;
+	ulist = *u_list;
 
 	if (!clist || !ulist)
 		return;
 
+	// Still need to update userlist and add code for adding a user 
+	// to a channel
+
 	// Doesn't exist.
 	new = xmalloc(sizeof(channel));
 
+	// Copy in its name, and create a userlist
 	strlcpy(new->name, &payload[4], sizeof(new->name));
 	new->user_list = xmalloc(sizeof(user));
 
+	// Looup the user, easier to copy from userlist than to fill in
+	// from scratch (would need to look up username anyways...)
+	uptr = user_lookup(&from, ulist);
+	memcpy(&(new->user_list), uptr, sizeof(user));
+	// Only one user in the channel, so set next to null
+	new->user_list->next = NULL;
+	// Going to be the last channel, set to null...
 	new->next = NULL;
 
+	// Advance to end of channel list
 	while (clist->next) 
 		clist = clist->next;
 
+	// Add it!
 	clist->next = new;
 
+	*c_list = clist;
+	*u_list = ulist;
 }
 
+user* user_lookup(struct sockaddr_storage *from, user *ulist) {
+	if (!ulist)
+		return NULL;
+
+	while (ulist)
+		if (!sockaddr_storage_equal(from, &(ulist->address)))
+			return ulist;
+
+	return NULL;
+}

@@ -21,11 +21,11 @@ void parse_dgram(char *payload, struct sockaddr_storage from,
 void login(char *payload, struct sockaddr_storage from, 
 		user **u_list, channel **c_list);
 void logout(struct sockaddr_storage from, user **u_list, channel **c_list);
-int sockaddr_storage_equals(struct sockaddr_storage *f1, 
+int sockaddr_storage_equal(struct sockaddr_storage *f1, 
 		struct sockaddr_storage *f2);
 void user_remove(user **u_list, struct sockaddr_storage from);
-void join(char *payload, struct sockaddr_storage, 
+void join(char *payload, struct sockaddr_storage from, 
 		user **u_list, channel **c_list);
-
+user* user_lookup(struct sockaddr_storage *from, user *ulist);
 
 #endif
