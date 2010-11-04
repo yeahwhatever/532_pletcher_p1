@@ -128,10 +128,10 @@ void parse_dgram(char *payload, struct sockaddr_storage from,
 		case 1:
 			logout(from, ulist, clist);
 			break;
-			/*
 		case 2:
-			join(payload, ulist, clist);
+			join(payload, from, ulist, clist);
 			break;
+			/*
 		case 3:
 			leave(payload, ulist, clist);
 			break;
@@ -259,8 +259,6 @@ void logout(struct sockaddr_storage from,
 }
 
 void user_remove(user **u_list, struct sockaddr_storage from) {
-	struct sockaddr_in sa_1, sa_2;
-	struct sockaddr_in6 sa6_1, sa6_2;
 
 	user *ulist, *uptr;
 	channel *cptr;
@@ -270,39 +268,11 @@ void user_remove(user **u_list, struct sockaddr_storage from) {
 	cptr = NULL;
 
 	while (ulist) {
-		// IPv44
-		if (from.ss_family == AF_INET && ulist->address.ss_family == AF_INET) {
-			sa_1 = *((struct sockaddr_in *)&from);
-			sa_2 = *((struct sockaddr_in *)&(ulist->address));
-
-			if (sa_1.sin_port != sa_2.sin_port || 
-					sa_1.sin_addr.s_addr != sa_2.sin_addr.s_addr) {
-				// Not a match, skip
-				uptr = ulist;
-				ulist = ulist->next;
-				continue;
-			}
-		// IPv6
-		} else if (from.ss_family == AF_INET6 && 
-				ulist->address.ss_family == AF_INET6) {
-			sa6_1 = *((struct sockaddr_in6 *)&from);
-			sa6_2 = *((struct sockaddr_in6 *)&(ulist->address));
-
-			if (sa6_1.sin6_port != sa6_2.sin6_port || 
-					!memcmp(sa6_1.sin6_addr.s6_addr, sa6_2.sin6_addr.s6_addr,
-					sizeof(sa6_1.sin6_addr.s6_addr))) {
-				// Not a match, skip
-				uptr = ulist;
-				ulist = ulist->next;
-				continue;
-			}
-		} else {
+		if (sockaddr_storage_equals(&from, &(ulist->address))) {
 			uptr = ulist;
 			ulist = ulist->next;
 			continue;
-
 		}
-
 		// We have a match!
 
 		// If first
@@ -336,3 +306,60 @@ void user_remove(user **u_list, struct sockaddr_storage from) {
 
 	*u_list = ulist;
 }
+
+int sockaddr_storage_equal(struct sockaddr_storage *f1,
+		struct sockaddr_storage *f2) {
+	struct sockaddr_in sa_1, sa_2;
+	struct sockaddr_in6 sa6_1, sa6_2;
+	// IPv44
+	if (f1->ss_family == AF_INET && f2.ss_family == AF_INET) {
+		sa_1 = *((struct sockaddr_in *)f1);
+		sa_2 = *((struct sockaddr_in *)f2);
+
+		if (sa_1.sin_port != sa_2.sin_port || 
+				sa_1.sin_addr.s_addr != sa_2.sin_addr.s_addr)
+			return 1;
+			// Not a match, skip
+		// IPv6
+	} else if (f1->ss_family == AF_INET6 && 
+			f2->ss_family == AF_INET6) {
+		sa6_1 = *((struct sockaddr_in6 *)f1);
+		sa6_2 = *((struct sockaddr_in6 *)f2);
+
+		if (sa6_1.sin6_port != sa6_2.sin6_port || 
+				memcmp(sa6_1.sin6_addr.s6_addr, sa6_2.sin6_addr.s6_addr,
+					sizeof(sa6_1.sin6_addr.s6_addr))) {
+			// Not a match, skip
+			return 1;
+		}
+	} else
+		// Also not a match.
+		return -1;
+
+	// Match!
+	return 0;
+}
+
+void join(char *payload, struct sockaddr_storage from, 
+		user **u_list, char **c_list) {
+	channel *clist, *new;
+	user *ulist;
+
+	if (!clist || !ulist)
+		return;
+
+	// Doesn't exist.
+	new = xmalloc(sizeof(channel));
+
+	strlcpy(new->name, &payload[4], sizeof(new->name));
+	new->user_list = xmalloc(sizeof(user));
+
+	new->next = NULL;
+
+	while (clist->next) 
+		clist = clist->next;
+
+	clist->next = new;
+
+}
+
