@@ -183,9 +183,12 @@ void login(char *payload, struct sockaddr_storage from,
 	ulist->t = time(NULL);
 	// Create a channel list for the user. Note we won't use the user_list
 	// field here. Set the channel name to Common
+	ulist->channel_list = NULL;
+	/*
 	ulist->channel_list = xmalloc(sizeof(channel));
 	ulist->channel_list->user_list = NULL;
 	ulist->channel_list->next = NULL;
+	*/
 	//strlcpy(ulist->channel_list->name, "Common", sizeof(ulist->name));
 	ulist->next = NULL;
 
@@ -359,30 +362,34 @@ void join(char *payload, struct sockaddr_storage from,
 	clist = *c_list;
 	ulist = *u_list;
 
-	if (!clist || !ulist)
+	if (!ulist)
 		return;
 
 	// Get the user, update its time, and store it for later use
 	uptr = user_lookup(&from, ulist);
-	update_time(&from, ulist);
+	if (!uptr)
+		return;
+	uptr->t = time(NULL);
 
-	// Update user list.
-	uptr2 = ulist;
-	while (uptr2) {
-		if (!sockaddr_storage_equal(&(uptr2->address), &from)) {
-			new = uptr2->channel_list;
-			while (new->next)
-				new = new->next;
-			new->next = xmalloc(sizeof(channel));
+	new = uptr->channel_list;
+	if (new) {
+		while (new->next)
 			new = new->next;
-			strlcpy(new->name, &payload[4], sizeof(new->name));
-			new->next = NULL;
-			new->user_list = NULL;
-		}
-		ulist = ulist->next;
+		new->next = xmalloc(sizeof(channel));
+		new = new->next;
+		strlcpy(new->name, &payload[4], sizeof(new->name));
+		new->next = NULL;
+		new->user_list = NULL;
+	} else {
+		uptr->channel_list = xmalloc(sizeof(channel));
+		new = uptr->channel_list;
+
+		strlcpy(new->name, &payload[4], sizeof(new->name));
+		new->next = NULL;
+		new->user_list = NULL;
 	}
 
-	// Channel already exists.
+	// Channel list already exists.
 	while (clist) {
 		if (!strcmp(clist->name, &payload[4])) {
 			uptr2 = clist->user_list;
@@ -392,6 +399,7 @@ void join(char *payload, struct sockaddr_storage from,
 			uptr2->next = xmalloc(sizeof(user));
 			uptr2 = uptr2->next;
 			memcpy(uptr2, uptr, sizeof(user));
+			break;
 		} else
 			clist = clist->next;
 	}
@@ -406,17 +414,21 @@ void join(char *payload, struct sockaddr_storage from,
 
 		// Looup the user, easier to copy from userlist than to fill in
 		// from scratch (would need to look up username anyways...)
-		memcpy(&(new->user_list), uptr, sizeof(user));
+		memcpy(new->user_list, uptr, sizeof(user));
 		// Only one user in the channel, so set next to null
 		new->user_list->next = NULL;
 		// Going to be the last channel, set to null...
 		new->next = NULL;
-		// Advance to end of channel list
-		while (clist->next) 
-			clist = clist->next;
+		if (*c_list) {
+			clist = *c_list;
+			while (clist->next) 
+				clist = clist->next;
 
-		// Add it!
-		clist->next = new;
+			// Add it!
+			clist->next = new;
+		// Otherwise, its the first channel. Start our channel list
+		} else
+			*c_list = new;
 	}
 
 }
