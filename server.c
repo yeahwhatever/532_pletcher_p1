@@ -444,6 +444,60 @@ user* user_lookup(struct sockaddr_storage *from, user *ulist) {
 	return NULL;
 }
 
+void leave(char *payload, struct sockaddr_storage *from,
+		user **u_list, channel **c_list) {
+	user *uptr;
+	channel *cptr, *cptr2 = NULL;
+
+	// Remove the channel from the user's list
+	uptr = user_lookup(from, *u_list);
+
+	if (!uptr) {
+		cptr = uptr->channel_list;
+		while (cptr) {
+			if (!strcmp(cptr->name, &payload[4])) {
+				// First
+				if (!cptr2) {
+					uptr->channel_list = cptr->next;
+					free(cptr);
+				// Middle or last
+				} else {
+					cptr2->next = cptr->next;
+					free(cptr);
+				}
+				break;
+			}
+			cptr2 = cptr;
+			cptr = cptr->next;
+		}
+	}
+
+	// Remove the user from channel from the channel list
+	cptr = *c_list;
+	cptr2 = NULL;
+	while (cptr) {
+		if (!strcmp(cptr->name, &payload[4])) {
+			user_remove(&(cptr->user_list), *from);
+			// Empty list, gotta kill the channel
+			if (!cptr->user_list) {
+				// Damn, were the first channel
+				if (!cptr2) {
+					cptr2 = cptr->next;
+					free(cptr2);
+					*c_list = cptr2;
+				// Middle or last
+				} else {
+					cptr2->next = cptr->next;
+					free(cptr);
+				}
+			}
+			break;
+		}
+		cptr2 = cptr;
+		cptr = cptr->next;
+	}
+}
+
 void update_time(struct sockaddr_storage *from, user *ulist) {
 	if (!ulist)
 		return;
