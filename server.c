@@ -106,12 +106,13 @@ int listen_loop(int socketfd) {
 			perror("server: recvfrom");
 
 		// Make sure we get all the data from this guy.
-		while (num > 4 && payload_size(buf) == num)
+		while (num > 4 && payload_size(buf) != num)
 			if ((num = recvfrom(socketfd, &buf[num], sizeof(buf) - num, 0, 
 							(struct sockaddr *)&from, &fromlen)) == -1) 
 				perror("server: recvfrom");
 
-		parse_dgram(buf, from, &clist, &ulist);		
+		if (num > 4)
+			parse_dgram(buf, from, &clist, &ulist);		
 	}
 }
 
@@ -123,7 +124,7 @@ void parse_dgram(char *payload, struct sockaddr_storage from,
 
 	switch (type) {
 		case 0:
-			login(payload, from, ulist, clist);
+			login(payload, from, ulist);
 			break;
 		case 1:
 			logout(from, ulist, clist);
@@ -154,13 +155,15 @@ void parse_dgram(char *payload, struct sockaddr_storage from,
 }
 
 void login(char *payload, struct sockaddr_storage from, 
-		user **u_list, channel **c_list) {
-	user *ulist;
-	channel *clist;
-	user *uptr;
+		user **u_list) {
+	user *uhead, *ulist;
+	//channel *chead, *clist;
+	//user *uptr;
 
 	ulist = *u_list;
-	clist = *c_list;
+	uhead = *u_list;
+	//clist = *c_list;
+	//chead = *c_list;
 
 	if (ulist) {
 		while (ulist->next != NULL)
@@ -168,8 +171,10 @@ void login(char *payload, struct sockaddr_storage from,
 
 		ulist->next = xmalloc(sizeof(user));
 		ulist = ulist->next;
-	} else 
+	} else {
 		ulist = xmalloc(sizeof(user));
+		uhead = ulist;
+	}
 
 	// Put the username in the userlist
 	strlcpy(ulist->name, &payload[4], sizeof(ulist->name));
@@ -181,9 +186,10 @@ void login(char *payload, struct sockaddr_storage from,
 	ulist->channel_list = xmalloc(sizeof(channel));
 	ulist->channel_list->user_list = NULL;
 	ulist->channel_list->next = NULL;
-	strlcpy(ulist->channel_list->name, "Common", sizeof(ulist->name));
+	//strlcpy(ulist->channel_list->name, "Common", sizeof(ulist->name));
 	ulist->next = NULL;
 
+	/*
 	if (clist) {
 		while (clist && strcmp(clist->name, "Common"))
 			clist = clist->next;
@@ -199,6 +205,7 @@ void login(char *payload, struct sockaddr_storage from,
 		clist->user_list = xmalloc(sizeof(user));
 		clist->user_list->next = NULL;
 		clist->next = NULL;
+		chead = clist;
 	}
 
 	uptr = clist->user_list;
@@ -211,17 +218,20 @@ void login(char *payload, struct sockaddr_storage from,
 	uptr->channel_list = NULL;
 	uptr->next = NULL;
 
-	*c_list = clist;
-	*u_list = ulist;
+	*c_list = chead;
+	*/
+	*u_list = uhead;
 }
 
 void logout(struct sockaddr_storage from,
 		user **u_list, channel **c_list) {
-	user *ulist, *uptr;
-	channel *clist, *cptr;
+	user *uhead, *ulist, *uptr;
+	channel *chead, *clist, *cptr;
 
 	ulist = *u_list;
+	uhead = *u_list;
 	clist = *c_list;
+	chead = *c_list;
 	uptr = NULL;
 	cptr = NULL;
 
@@ -255,12 +265,14 @@ void logout(struct sockaddr_storage from,
 		clist = clist->next;
 	}
 
-	*c_list = clist;
+	if (!clist)
+		*c_list = NULL;
+
+	*c_list = chead;
 }
 
 void user_remove(user **u_list, struct sockaddr_storage from) {
-
-	user *ulist, *uptr;
+	user *uhead, *ulist, *uptr;
 	channel *cptr;
 
 	ulist = *u_list;
@@ -277,8 +289,6 @@ void user_remove(user **u_list, struct sockaddr_storage from) {
 
 		// If first
 		if (uptr == NULL) {
-			// Store next, this will be new head
-			uptr = ulist->next;
 			// Need to free channels
 			cptr = ulist->channel_list;
 			while (cptr) {
@@ -288,6 +298,7 @@ void user_remove(user **u_list, struct sockaddr_storage from) {
 			// Free ulist, set old 2nd to head
 			free(ulist);
 			ulist = uptr;
+			uhead = ulist;
 			break;
 			// If in the middle, or last
 		} else {
@@ -304,7 +315,7 @@ void user_remove(user **u_list, struct sockaddr_storage from) {
 		}
 	}
 
-	*u_list = ulist;
+	*u_list = uhead;
 }
 
 int sockaddr_storage_equal(struct sockaddr_storage *f1,
@@ -343,7 +354,7 @@ int sockaddr_storage_equal(struct sockaddr_storage *f1,
 void join(char *payload, struct sockaddr_storage from, 
 		user **u_list, channel **c_list) {
 	channel *clist, *new;
-	user *ulist, *uptr;
+	user *ulist, *uptr, *uptr2;
 
 	clist = *c_list;
 	ulist = *u_list;
@@ -351,36 +362,65 @@ void join(char *payload, struct sockaddr_storage from,
 	if (!clist || !ulist)
 		return;
 
-	// Still need to update userlist and add code for adding a user 
-	// to a channel
+	// Get the user, update its time, and store it for later use
+	uptr = user_lookup(&from, ulist);
+	update_time(&from, ulist);
+
+	// Update user list.
+	uptr2 = ulist;
+	while (uptr2) {
+		if (!sockaddr_storage_equal(&(uptr2->address), &from)) {
+			new = uptr2->channel_list;
+			while (new->next)
+				new = new->next;
+			new->next = xmalloc(sizeof(channel));
+			new = new->next;
+			strlcpy(new->name, &payload[4], sizeof(new->name));
+			new->next = NULL;
+			new->user_list = NULL;
+		}
+		ulist = ulist->next;
+	}
+
+	// Channel already exists.
+	while (clist) {
+		if (!strcmp(clist->name, &payload[4])) {
+			uptr2 = clist->user_list;
+			while (uptr2->next) {
+				uptr2 = uptr2->next;
+			}
+			uptr2->next = xmalloc(sizeof(user));
+			uptr2 = uptr2->next;
+			memcpy(uptr2, uptr, sizeof(user));
+		} else
+			clist = clist->next;
+	}
 
 	// Doesn't exist.
-	new = xmalloc(sizeof(channel));
+	if (!clist) {
+		new = xmalloc(sizeof(channel));
 
-	// Copy in its name, and create a userlist
-	strlcpy(new->name, &payload[4], sizeof(new->name));
-	new->user_list = xmalloc(sizeof(user));
+		// Copy in its name, and create a userlist
+		strlcpy(new->name, &payload[4], sizeof(new->name));
+		new->user_list = xmalloc(sizeof(user));
 
-	// Looup the user, easier to copy from userlist than to fill in
-	// from scratch (would need to look up username anyways...)
-	uptr = user_lookup(&from, ulist);
-	memcpy(&(new->user_list), uptr, sizeof(user));
-	// Only one user in the channel, so set next to null
-	new->user_list->next = NULL;
-	// Going to be the last channel, set to null...
-	new->next = NULL;
+		// Looup the user, easier to copy from userlist than to fill in
+		// from scratch (would need to look up username anyways...)
+		memcpy(&(new->user_list), uptr, sizeof(user));
+		// Only one user in the channel, so set next to null
+		new->user_list->next = NULL;
+		// Going to be the last channel, set to null...
+		new->next = NULL;
+		// Advance to end of channel list
+		while (clist->next) 
+			clist = clist->next;
 
-	// Advance to end of channel list
-	while (clist->next) 
-		clist = clist->next;
+		// Add it!
+		clist->next = new;
+	}
 
-	// Add it!
-	clist->next = new;
-
-	*c_list = clist;
-	*u_list = ulist;
 }
-
+	
 user* user_lookup(struct sockaddr_storage *from, user *ulist) {
 	if (!ulist)
 		return NULL;
@@ -390,4 +430,17 @@ user* user_lookup(struct sockaddr_storage *from, user *ulist) {
 			return ulist;
 
 	return NULL;
+}
+
+void update_time(struct sockaddr_storage *from, user *ulist) {
+	if (!ulist)
+		return;
+
+	while (ulist) {
+		if (!sockaddr_storage_equal(from, &(ulist->address))) {
+			ulist->t = time(NULL);
+			return;
+		}
+		ulist = ulist->next;
+	}
 }
