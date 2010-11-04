@@ -78,16 +78,17 @@ int main(int argc, char *argv[]) {
         return 3;
     }
 
-	freeaddrinfo(servinfo);
-
 	status = listen_loop(socketfd);
+
+	freeaddrinfo(servinfo);
 
 	return 0;
 }
 
 int listen_loop(int socketfd) {
 	struct sockaddr_storage from;
-	int fromlen, num;
+	int num;
+	socklen_t fromlen;
 	char buf[4+32+64]; // Largest message is a say...
 	channel *clist;
    	user *ulist;
@@ -112,11 +113,11 @@ int listen_loop(int socketfd) {
 				perror("server: recvfrom");
 
 		if (num > 4)
-			parse_dgram(buf, from, &clist, &ulist);		
+			parse_dgram(socketfd, fromlen, buf, from, &clist, &ulist);		
 	}
 }
 
-void parse_dgram(char *payload, struct sockaddr_storage from, 
+void parse_dgram(int socketfd, socklen_t fromlen, char *payload, struct sockaddr_storage from, 
 		channel **clist, user **ulist) {
 	int type;
 
@@ -135,10 +136,10 @@ void parse_dgram(char *payload, struct sockaddr_storage from,
 		case 3:
 			leave(payload, from, ulist, clist);
 			break;
-			/*
 		case 4:
-			say(payload, ulist, clist);
+			say(socketfd, fromlen, payload, from, ulist, clist);
 			break;
+			/*
 		case 5:
 			list(payload, ulist, clist);
 			break;
@@ -501,15 +502,54 @@ void leave(char *payload, struct sockaddr_storage from,
 	}
 }
 
-void update_time(struct sockaddr_storage *from, user *ulist) {
-	if (!ulist)
+void say(int socketfd, socklen_t fromlen, char *payload, 
+		struct sockaddr_storage from, user **u_list, channel **c_list) {
+	user *uptr;
+	char name[32], buf[4+32+32+64];
+	channel *cptr;
+	int num;
+	struct sockaddr_in6 sa6;
+
+	uptr = user_lookup(&from, *u_list);
+	
+	memset(name, 0, sizeof(name));
+	memset(buf, 0, sizeof(buf));
+
+	if (uptr) {
+		uptr->t = time(NULL);
+		strlcpy(name, uptr->name, sizeof(name));
+	}
+
+	cptr = *c_list;
+	while (cptr) {
+		if (!strcmp(cptr->name, &payload[4])) 
+			break;
+		cptr = cptr->next;
+	}
+
+	if (!cptr)
 		return;
 
-	while (ulist) {
-		if (!sockaddr_storage_equal(from, &(ulist->address))) {
-			ulist->t = time(NULL);
-			return;
+	// Make the buffer!
+	num = 0;
+	memcpy(buf, &num, 4);
+	memcpy(&buf[4], &(cptr->name), sizeof(cptr->name));
+	memcpy(&buf[36], name, sizeof(name));
+	memcpy(&buf[68], &payload[36], sizeof(buf)-68);
+
+	uptr = cptr->user_list;
+
+	while (uptr) {
+
+		sa6 = *((struct sockaddr_in6 *)&(uptr->address));
+		
+		if ((num = sendto(socketfd, buf, sizeof(buf), 0, 
+				(struct sockaddr *)&(uptr->address), 
+				fromlen)) == -1) {
+			perror("server: sendto");
 		}
-		ulist = ulist->next;
+
+		uptr = uptr->next;
 	}
+
 }
