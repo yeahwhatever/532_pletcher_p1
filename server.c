@@ -132,10 +132,10 @@ void parse_dgram(char *payload, struct sockaddr_storage from,
 		case 2:
 			join(payload, from, ulist, clist);
 			break;
-			/*
 		case 3:
-			leave(payload, ulist, clist);
+			leave(payload, from, ulist, clist);
 			break;
+			/*
 		case 4:
 			say(payload, ulist, clist);
 			break;
@@ -437,22 +437,25 @@ user* user_lookup(struct sockaddr_storage *from, user *ulist) {
 	if (!ulist)
 		return NULL;
 
-	while (ulist)
+	while (ulist) {
 		if (!sockaddr_storage_equal(from, &(ulist->address)))
 			return ulist;
+		ulist = ulist->next;
+	}
 
 	return NULL;
 }
 
-void leave(char *payload, struct sockaddr_storage *from,
+void leave(char *payload, struct sockaddr_storage from,
 		user **u_list, channel **c_list) {
 	user *uptr;
 	channel *cptr, *cptr2 = NULL;
 
 	// Remove the channel from the user's list
-	uptr = user_lookup(from, *u_list);
-
-	if (!uptr) {
+	uptr = user_lookup(&from, *u_list);
+	
+	if (uptr) {
+		uptr->t = time(NULL);
 		cptr = uptr->channel_list;
 		while (cptr) {
 			if (!strcmp(cptr->name, &payload[4])) {
@@ -477,7 +480,7 @@ void leave(char *payload, struct sockaddr_storage *from,
 	cptr2 = NULL;
 	while (cptr) {
 		if (!strcmp(cptr->name, &payload[4])) {
-			user_remove(&(cptr->user_list), *from);
+			user_remove(&(cptr->user_list), from);
 			// Empty list, gotta kill the channel
 			if (!cptr->user_list) {
 				// Damn, were the first channel

@@ -28,5 +28,7 @@ void join(char *payload, struct sockaddr_storage from,
 		user **u_list, channel **c_list);
 user* user_lookup(struct sockaddr_storage *from, user *ulist);
 void update_time(struct sockaddr_storage *from, user *ulist);
+void leave(char *payload, struct sockaddr_storage from, 
+		user **u_list, channel **c_list);
 
 #endif
