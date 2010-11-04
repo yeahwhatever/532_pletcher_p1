@@ -111,22 +111,23 @@ int listen_loop(int socketfd) {
 							(struct sockaddr *)&from, &fromlen)) == -1) 
 				perror("server: recvfrom");
 
-		parse_dgram(buf, &clist, &ulist);		
+		parse_dgram(buf, from, &clist, &ulist);		
 	}
 }
 
-void parse_dgram(char *payload, channel **clist, user **ulist) {
+void parse_dgram(char *payload, struct sockaddr_storage from, 
+		channel **clist, user **ulist) {
 	int type;
 
 	memcpy(&type, payload, sizeof(type));
 
 	switch (type) {
 		case 0:
-			login(payload, ulist, clist);
+			login(payload, from, ulist, clist);
 			break;
 			/*
 		case 1:
-			logout(payload, ulist, clist);
+			logout(payload, from, ulist, clist);
 			break;
 		case 2:
 			join(payload, ulist, clist);
@@ -152,7 +153,8 @@ void parse_dgram(char *payload, channel **clist, user **ulist) {
 	}
 }
 
-void login(char *payload, user **u_list, channel **c_list) {
+void login(char *payload, struct sockaddr_storage from, 
+		user **u_list, channel **c_list) {
 	user *ulist;
 	channel *clist;
 	user *uptr;
@@ -171,6 +173,7 @@ void login(char *payload, user **u_list, channel **c_list) {
 
 	// Put the username in the userlist
 	strlcpy(ulist->name, &payload[4], sizeof(ulist->name));
+	ulist->address = from;
 	// Set user time
 	ulist->t = time(NULL);
 	// Create a channel list for the user. Note we won't use the user_list
@@ -203,6 +206,7 @@ void login(char *payload, user **u_list, channel **c_list) {
 		uptr = uptr->next;
 
 	strlcpy(uptr->name, &payload[4], sizeof(ulist->name));
+	uptr->address = from;
 	uptr->t = NULL;
 	uptr->channel_list = NULL;
 	uptr->next = NULL;
@@ -210,3 +214,13 @@ void login(char *payload, user **u_list, channel **c_list) {
 	*c_list = clist;
 	*u_list = ulist;
 }
+
+/*
+void logout(char *payload, struct sockaddr_storage from,
+		user **u_list, channel **c_list) {
+	from = NULL;
+	payload = NULL;
+	u_list = NULL;
+	c_list = NULL;
+}
+*/
