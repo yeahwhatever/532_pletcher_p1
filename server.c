@@ -285,7 +285,7 @@ void logout(struct sockaddr_storage from,
 
 void user_remove(user **u_list, struct sockaddr_storage from) {
 	user *ulist, *uptr;
-	channel *cptr;
+	channel *cptr, *cptr2;
 
 	ulist = *u_list;
 	uptr = NULL;
@@ -306,8 +306,9 @@ void user_remove(user **u_list, struct sockaddr_storage from) {
 		// Need to free channels
 		cptr = ulist->channel_list;
 		while (cptr) {
+			cptr2 = cptr;
 			cptr = cptr->next;
-			free(cptr);
+			free(cptr2);
 		}
 		// Free ulist, set old 2nd to head
 		*u_list = ulist->next;
@@ -317,8 +318,9 @@ void user_remove(user **u_list, struct sockaddr_storage from) {
 		// Clear channels
 		cptr = ulist->channel_list;
 		while (cptr) {
+			cptr2 = cptr;
 			cptr = cptr->next;
-			free(cptr);
+			free(cptr2);
 		}
 		// uptr points to prev, so we want to skip to next
 		uptr->next = ulist->next;
@@ -687,7 +689,7 @@ void err(int socketfd, struct sockaddr_storage from, socklen_t fromlen) {
 
 void timeout(user **u_list, channel **c_list) {
 	user *uptr;
-	channel *cptr, *cptr2;
+	channel *cptr, *cptr2, *cptr3;
 
 	uptr = *u_list;
 	while (uptr) {
@@ -696,22 +698,27 @@ void timeout(user **u_list, channel **c_list) {
 			cptr = *c_list;
 			cptr2 = NULL;
 			while (cptr) {
+				cptr3 = cptr;
 				user_remove(&(cptr->user_list), uptr->address);
 				// That was the last user, destroy the channel
 				if (!cptr->user_list) {
 					// First channel
 					if (!cptr2) {
+						*c_list = cptr2;
 						cptr2 = cptr->next;
 						free(cptr);
-						*c_list = cptr2;
+						cptr = cptr2;
+						cptr2 = NULL;
 					// Middle channel
 					} else {
 						cptr2->next = cptr->next;
 						free(cptr);
+						cptr = cptr2->next;
 					}
+				} else {
+					cptr2 = cptr;
+					cptr = cptr->next;
 				}
-				cptr2 = cptr;
-				cptr = cptr->next;
 			}
 
 			user_remove(u_list, uptr->address);
